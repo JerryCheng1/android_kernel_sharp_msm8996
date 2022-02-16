@@ -1,4 +1,4 @@
-dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
+#dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	msm8996-v2-pmi8994-mtp.dtb \
 	msm8996-v2-pmi8994-pmk8001-cdp.dtb \
 	msm8996-v2-pmi8994-pmk8001-mtp.dtb \
@@ -349,6 +349,11 @@ dtb-$(CONFIG_ARCH_MSM8909) += msm8909-pm8916-mtp.dtb \
 	msm8909-mtp.dtb \
 	msm8909-1gb-mtp.dtb
 
+dtb-$(CONFIG_ARCH_PA32) += \
+       msm8996-sharp-pa32-v2-fluid.dtb \
+       msm8996-sharp-pa32-v2-pmi8996-fluid.dtb \
+       msm8996-sharp-pa32-v3-fluid.dtb \
+       msm8996-sharp-pa32-v3-pmi8996-fluid.dtb
 
 ifeq ($(CONFIG_ARM64),y)
 always          := $(dtb-y)

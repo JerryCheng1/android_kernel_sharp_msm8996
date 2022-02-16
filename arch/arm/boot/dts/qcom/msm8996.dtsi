@@ -35,10 +35,12 @@
 		pci-domain0 = &pcie0;
 		pci-domain1 = &pcie1;
 		pci-domain2 = &pcie2;
-		i2c6 = &i2c_6;
+/* COORDINATOR Qualcomm_Q01600_CS BUILDERR MODIFY start */
+//		i2c6 = &i2c_6;
+/* COORDINATOR Qualcomm_Q01600_CS BUILDERR MODIFY end */
 		i2c7 = &i2c_7;
 		i2c8 = &i2c_8;
-		i2c12 = &i2c_12;
+		//i2c12 = &i2c_12;
 		spi0 = &spi_0;
 		mhi_rmnet0 = &mhi_rmnet_0;
 		mhi_rmnet1 = &mhi_rmnet_1;
@@ -392,27 +394,29 @@
 		qcom,summing-threshold = <0x10>;
 	};
 
-	i2c_6: i2c@757a000 { /* BLSP1 QUP6 */
-		compatible = "qcom,i2c-msm-v2";
-		#address-cells = <1>;
-		#size-cells = <0>;
-		reg = <0x757a000  0x1000>;
-		reg-names = "qup_phys_addr";
-		interrupt-names = "qup_irq";
-		interrupts = <0 100 0>;
-		dmas = <&dma_blsp1 22 64 0x20000020 0x20>,
-			<&dma_blsp1 23 32 0x20000020 0x20>;
-		dma-names = "tx", "rx";
-		qcom,master-id = <86>;
-		qcom,clk-freq-out = <400000>;
-		qcom,clk-freq-in  = <19200000>;
-		clock-names = "iface_clk", "core_clk";
-		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
-			 <&clock_gcc clk_gcc_blsp1_qup6_i2c_apps_clk>;
-		pinctrl-names = "i2c_active", "i2c_sleep";
-		pinctrl-0 = <&i2c_6_active>;
-		pinctrl-1 = <&i2c_6_sleep>;
-	};
+/* COORDINATOR Qualcomm_Q01600_CS BUILDERR MODIFY start */
+//	i2c_6: i2c@757a000 { /* BLSP1 QUP6 */
+//		compatible = "qcom,i2c-msm-v2";
+//		#address-cells = <1>;
+//		#size-cells = <0>;
+//		reg = <0x757a000  0x1000>;
+//		reg-names = "qup_phys_addr";
+//		interrupt-names = "qup_irq";
+//		interrupts = <0 100 0>;
+//		dmas = <&dma_blsp1 22 64 0x20000020 0x20>,
+//			<&dma_blsp1 23 32 0x20000020 0x20>;
+//		dma-names = "tx", "rx";
+//		qcom,master-id = <86>;
+//		qcom,clk-freq-out = <400000>;
+//		qcom,clk-freq-in  = <19200000>;
+//		clock-names = "iface_clk", "core_clk";
+//		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
+//			 <&clock_gcc clk_gcc_blsp1_qup6_i2c_apps_clk>;
+//		pinctrl-names = "i2c_active", "i2c_sleep";
+//		pinctrl-0 = <&i2c_6_active>;
+//		pinctrl-1 = <&i2c_6_sleep>;
+//	};
+/* COORDINATOR Qualcomm_Q01600_CS BUILDERR MODIFY end */
 
 	i2c_7: i2c@75b5000 { /* BLSP2 QUP1 */
 		compatible = "qcom,i2c-msm-v2";
@@ -2359,40 +2363,42 @@
 		status = "disabled";
 	};
 
-	qcom,ssc@1c00000 {
-		compatible = "qcom,pil-tz-generic";
-		reg = <0x1c00000 0x4000>;
-		interrupts = <0 390 1>;
-
-		vdd_cx-supply = <&pm8994_l26_corner>;
-		vdd_px-supply = <&pm8994_lvs2>;
-		qcom,vdd_cx-uV-uA = <5 0>;
-		qcom,proxy-reg-names = "vdd_cx", "vdd_px";
-		qcom,keep-proxy-regs-on;
-
-		clocks = <&clock_gcc clk_cxo_pil_ssc_clk>,
-			 <&clock_gcc clk_aggre2_noc_clk>;
-		clock-names = "xo", "aggre2";
-		qcom,proxy-clock-names = "xo", "aggre2";
-
-		qcom,pas-id = <12>;
-		qcom,proxy-timeout-ms = <10000>;
-		qcom,smem-id = <424>;
-		qcom,sysmon-id = <3>;
-		qcom,ssctl-instance-id = <0x16>;
-		qcom,firmware-name = "slpi";
-		qcom,edge = "dsps";
-		memory-region = <&peripheral_mem>;
-
-		/* GPIO inputs from ssc */
-		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_3_in 0 0>;
-		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_3_in 2 0>;
-		qcom,gpio-err-ready = <&smp2pgpio_ssr_smp2p_3_in 1 0>;
-		qcom,gpio-stop-ack = <&smp2pgpio_ssr_smp2p_3_in 3 0>;
-
-		/* GPIO output to ssc */
-		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_3_out 0 0>;
-	};
+//FEATURE_SH_BSP_CUST start
+//	qcom,ssc@1c00000 {
+//		compatible = "qcom,pil-tz-generic";
+//		reg = <0x1c00000 0x4000>;
+//		interrupts = <0 390 1>;
+//
+//		vdd_cx-supply = <&pm8994_l26_corner>;
+//		vdd_px-supply = <&pm8994_lvs2>;
+//		qcom,vdd_cx-uV-uA = <5 0>;
+//		qcom,proxy-reg-names = "vdd_cx", "vdd_px";
+//		qcom,keep-proxy-regs-on;
+//
+//		clocks = <&clock_gcc clk_cxo_pil_ssc_clk>,
+//			 <&clock_gcc clk_aggre2_noc_clk>;
+//		clock-names = "xo", "aggre2";
+//		qcom,proxy-clock-names = "xo", "aggre2";
+//
+//		qcom,pas-id = <12>;
+//		qcom,proxy-timeout-ms = <10000>;
+//		qcom,smem-id = <424>;
+//		qcom,sysmon-id = <3>;
+//		qcom,ssctl-instance-id = <0x16>;
+//		qcom,firmware-name = "slpi";
+//		qcom,edge = "dsps";
+//		memory-region = <&peripheral_mem>;
+//
+//		/* GPIO inputs from ssc */
+//		qcom,gpio-err-fatal = <&smp2pgpio_ssr_smp2p_3_in 0 0>;
+//		qcom,gpio-proxy-unvote = <&smp2pgpio_ssr_smp2p_3_in 2 0>;
+//		qcom,gpio-err-ready = <&smp2pgpio_ssr_smp2p_3_in 1 0>;
+//		qcom,gpio-stop-ack = <&smp2pgpio_ssr_smp2p_3_in 3 0>;
+//
+//		/* GPIO output to ssc */
+//		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_3_out 0 0>;
+//	};
+//FEATURE_SH_BSP_CUST end
 
        pil_modem: qcom,mss@2080000 {
                 compatible = "qcom,pil-q6v55-mss";
