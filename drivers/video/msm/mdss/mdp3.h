@@ -38,7 +38,9 @@
 #define SVS_MAX_PIXEL		(540 * 960)
 
 #define KOFF_TIMEOUT_MS 84
-#define KOFF_TIMEOUT msecs_to_jiffies(KOFF_TIMEOUT_MS)
+/* COORDINATOR SH_Customize MERGE start */
+//#define KOFF_TIMEOUT msecs_to_jiffies(KOFF_TIMEOUT_MS)
+/* COORDINATOR SH_Customize MERGE end */
 #define WAIT_DMA_TIMEOUT msecs_to_jiffies(84)
 
 /*

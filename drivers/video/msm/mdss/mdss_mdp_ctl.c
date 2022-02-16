@@ -5981,3 +5981,11 @@ void mdss_mdp_wb_free(struct mdss_mdp_writeback *wb)
 			&mdata->wb_lock))
 		mutex_unlock(&mdata->wb_lock);
 }
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00034 */
+void mdss_mdp_ctl_perf_update_ctl(struct mdss_mdp_ctl *ctl,
+		int params_changed)
+{
+	mdss_mdp_ctl_perf_update(ctl, params_changed, false);
+}
+#endif /* CONFIG_SHDISP */

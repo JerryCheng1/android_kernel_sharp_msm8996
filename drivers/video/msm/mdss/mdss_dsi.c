@@ -33,6 +33,9 @@
 #include "mdss_debug.h"
 #include "mdss_dsi_phy.h"
 #include "mdss_dba_utils.h"
+#ifdef CONFIG_SHDISP /* CUST_ID_00021 */
+#include "mdss_shdisp.h"
+#endif /* CONFIG_SHLCDC_BOARD */
 
 #define XO_CLK_RATE	19200000
 #define CMDLINE_DSI_CTL_NUM_STRING_LEN 2
@@ -744,10 +747,13 @@ static ssize_t mdss_dsi_cmd_state_read(struct file *file, char __user *buf,
 
 	if (blen < 0)
 		return 0;
-
+#ifndef CONFIG_SHDISP		
 	if (copy_to_user(buf, buffer, blen))
 		return -EFAULT;
-
+#else
+	if (copy_to_user(buf, buffer, min(count, (size_t)blen+1)))
+		return -EFAULT;
+#endif
 	*ppos += blen;
 	return blen;
 }
@@ -3122,6 +3128,9 @@ static int mdss_dsi_cont_splash_config(struct mdss_panel_info *pinfo,
 		ctrl_pdata->is_phyreg_enabled = 1;
 		if (pinfo->type == MIPI_CMD_PANEL)
 			mdss_dsi_set_burst_mode(ctrl_pdata);
+#ifdef CONFIG_SHDISP /* CUST_ID_00021 */
+		mdss_shdisp_set_dsi_ctrl(ctrl_pdata);
+#endif /* CONFIG_SHLCDC_BOARD */
 	} else {
 		/* Turn on the clocks to read the DSI and PHY revision */
 		mdss_dsi_clk_ctrl(ctrl_pdata, ctrl_pdata->dsi_clk_handle,
@@ -4277,9 +4286,13 @@ int dsi_panel_device_register(struct platform_device *ctrl_pdev,
 		}
 	}
 
+#ifndef CONFIG_SHDISP /* CUST_ID_00021 */
 	pinfo->cont_splash_enabled =
 		ctrl_pdata->mdss_util->panel_intf_status(pinfo->pdest,
 		MDSS_PANEL_INTF_DSI) ? true : false;
+#else /* CONFIG_SHDISP */
+	pinfo->cont_splash_enabled = mdss_shdisp_get_disp_status();
+#endif /* CONFIG_SHDISP */
 
 	pr_info("%s: Continuous splash %s\n", __func__,
 		pinfo->cont_splash_enabled ? "enabled" : "disabled");

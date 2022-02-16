@@ -28,6 +28,9 @@
 #include "mdss_rotator_internal.h"
 #include "mdss_mdp.h"
 #include "mdss_debug.h"
+#ifdef CONFIG_SHDISP /* CUST_ID_00051 */
+#include "mdss_shdisp.h"
+#endif /* CONFIG_SHDISP */
 
 /* waiting for hw time out, 3 vsync for 30fps*/
 #define ROT_HW_ACQUIRE_TIMEOUT_IN_MS 100
@@ -2263,7 +2266,14 @@ static int mdss_rotator_handle_request(struct mdss_rot_mgr *mgr,
 	}
 
 	mdss_rotator_install_fence_fd(req);
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00051 */
+	mdss_shdisp_lock_recovery();
+#endif /* CONFIG_SHDISP */
 	mdss_rotator_queue_request(mgr, private, req);
+#ifdef CONFIG_SHDISP /*CUST_ID_00051 */
+	mdss_shdisp_unlock_recovery();
+#endif /* CONFIG_SHDISP */
 
 	mutex_unlock(&mgr->lock);
 
@@ -2424,7 +2434,14 @@ static int mdss_rotator_handle_request32(struct mdss_rot_mgr *mgr,
 	}
 
 	mdss_rotator_install_fence_fd(req);
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00051 */
+	mdss_shdisp_lock_recovery();
+#endif /* CONFIG_SHDISP */
 	mdss_rotator_queue_request(mgr, private, req);
+#ifdef CONFIG_SHDISP /*CUST_ID_00051 */
+	mdss_shdisp_unlock_recovery();
+#endif /* CONFIG_SHDISP */
 
 	mutex_unlock(&mgr->lock);
 

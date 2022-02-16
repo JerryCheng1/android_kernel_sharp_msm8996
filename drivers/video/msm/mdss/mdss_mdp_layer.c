@@ -56,6 +56,11 @@ enum layer_zorder_used {
 	LAYER_ZORDER_BOTH = 3,
 };
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+extern int chg_format_flg;
+static void mdss_mdp_layer_sspp_change_chk(struct msm_fb_data_type *mfd, struct mdp_layer_commit_v1 *commit);
+#endif /* CONFIG_SHDISP */
+
 struct mdss_mdp_validate_info_t {
 	struct mdp_input_layer *layer;
 	struct mdss_mdp_pipe_multirect_params multirect;
@@ -510,6 +515,12 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 	if (layer->flags & MDP_LAYER_PP)
 		pipe->flags |= MDP_OVERLAY_PP_CFG_EN;
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+	if ((pipe->type == MDSS_MDP_PIPE_TYPE_VIG) && (pipe->src_fmt->is_yuv)) {
+		pipe->flags |= MDP_OVERLAY_PP_CFG_EN;
+	}
+#endif /* CONFIG_SHDISP */
+
 	pipe->is_fg = layer->flags & MDP_LAYER_FORGROUND;
 	pipe->img_width = layer->buffer.width & 0x3fff;
 	pipe->img_height = layer->buffer.height & 0x3fff;
@@ -675,6 +686,7 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 		goto end;
 	}
 
+#ifndef CONFIG_SHDISP /* CUST_ID_00039 */
 	if (layer->flags & MDP_LAYER_PP) {
 		memcpy(&pipe->pp_cfg, layer->pp_info,
 				sizeof(struct mdp_overlay_pp_params));
@@ -684,6 +696,7 @@ static int __configure_pipe_params(struct msm_fb_data_type *mfd,
 			goto end;
 		}
 	}
+#endif /* CONFIG_SHDISP */
 
 	if (pipe->type == MDSS_MDP_PIPE_TYPE_CURSOR)
 		goto end;
@@ -1818,6 +1831,7 @@ static int __validate_layers(struct msm_fb_data_type *mfd,
 			else
 				left_plist[left_cnt++] = pipe;
 
+#ifndef CONFIG_SHDISP /* CUST_ID_00039 */
 			if (layer->flags & MDP_LAYER_PP) {
 				memcpy(&pipe->pp_cfg, layer->pp_info,
 					sizeof(struct mdp_overlay_pp_params));
@@ -1827,6 +1841,7 @@ static int __validate_layers(struct msm_fb_data_type *mfd,
 				else
 					pipe->params_changed++;
 			}
+#endif /* CONFIG_SHDISP */
 			pipe->dirty = false;
 			continue;
 		}
@@ -2080,6 +2095,10 @@ int mdss_mdp_layer_pre_commit(struct msm_fb_data_type *mfd,
 		}
 	}
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+	mdss_mdp_layer_sspp_change_chk(mfd, commit);
+#endif /* CONFIG_SHDISP */
+
 	if (validate_failed) {
 		ret = __validate_layers(mfd, file, commit);
 		if (ret) {
@@ -2169,6 +2188,10 @@ int mdss_mdp_layer_atomic_validate(struct msm_fb_data_type *mfd,
 			mfd->index);
 		return -EPERM;
 	}
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+	mdss_mdp_layer_sspp_change_chk(mfd, commit);
+#endif /* CONFIG_SHDISP */
 
 	return __validate_layers(mfd, file, commit);
 }
@@ -2363,3 +2386,44 @@ done:
 	return rc;
 }
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+static void mdss_mdp_layer_sspp_change_chk(struct msm_fb_data_type *mfd, struct mdp_layer_commit_v1 *commit)
+{
+	int i;
+	int layer_count;
+	struct mdss_mdp_pipe *pipe;
+	struct mdp_input_layer *layer_list, *layer;
+	struct mdss_data_type *mdata;
+	struct mdss_mdp_format_params *fmt;
+
+	mdata = mfd_to_mdata(mfd);
+	layer_count = commit->input_layer_cnt;
+	layer_list = commit->input_layers;
+
+	if (mfd->panel_info->pdest != DISPLAY_1) {
+		return;
+	}
+
+	for (i = 0; i < layer_count; i++) {
+		layer = &layer_list[i];
+		pipe = mdss_mdp_pipe_search(mdata, layer->pipe_ndx, MDSS_MDP_PIPE_RECT0);
+		if (IS_ERR_OR_NULL(pipe)) {
+			pr_err("Invalid pipe (%d)\n", layer->pipe_ndx);
+			return;
+		}
+
+		fmt = mdss_mdp_get_format_params(layer->buffer.format);
+		if (!fmt) {
+			pr_err("invalid layer format %d\n",
+				layer->buffer.format);
+			return;
+		}
+		if ((pipe->type == MDSS_MDP_PIPE_TYPE_VIG) && (fmt->is_yuv)) {
+			chg_format_flg = 1;
+			break;
+		}
+	}
+
+	return;
+}
+#endif /* CONFIG_SHDISP */

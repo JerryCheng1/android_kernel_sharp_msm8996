@@ -33,6 +33,9 @@
 #define CMD_MODE_IDLE_TIMEOUT msecs_to_jiffies(16 * 4)
 #define INPUT_EVENT_HANDLER_DELAY_USECS (16000 * 4)
 #define AUTOREFRESH_MAX_FRAME_CNT 6
+#ifdef CONFIG_SHDISP /* CUST_ID_00066 */
+#define WAIT_PINGPONG_RETRY 100
+#endif /* CONFIG_SHDISP */
 
 static DEFINE_MUTEX(cmd_clk_mtx);
 
@@ -104,7 +107,19 @@ struct mdss_mdp_cmd_ctx {
 	struct mdss_mdp_cmd_ctx *sync_ctx; /* for partial update */
 	u32 pp_timeout_report_cnt;
 	bool pingpong_split_slave;
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00064*/
+	struct mutex qos_mtx;
+	int qos_deny_collapse;
+#endif /* CONFIG_SHDISP */
 };
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00023 */
+extern void mdss_dsi_hs_clk_lane_enable(bool enable);
+#endif /* CONFIG_SHDISP */
+#ifdef CONFIG_SHDISP /* CUST_ID_00024 */
+int mdss_mdp_cmd_tearcheck_enable(struct mdss_mdp_ctl *ctl, bool enable);
+#endif /* CONFIG_SHDISP */
 
 struct mdss_mdp_cmd_ctx mdss_mdp_cmd_ctx_list[MAX_SESSIONS];
 
@@ -936,6 +951,9 @@ static inline void mdss_mdp_cmd_clk_on(struct mdss_mdp_cmd_ctx *ctx)
 
 	mdss_bus_bandwidth_ctrl(true);
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00023 */
+	mdss_dsi_hs_clk_lane_enable(true);
+#endif /* CONFIG_SHDISP */
 	mdss_mdp_hist_intr_setup(&mdata->hist_intr, MDSS_IRQ_RESUME);
 
 	mutex_unlock(&ctx->clk_mtx);
@@ -954,6 +972,9 @@ static inline void mdss_mdp_cmd_clk_off(struct mdss_mdp_cmd_ctx *ctx)
 		mdata->bus_ref_cnt);
 
 	mdss_mdp_hist_intr_setup(&mdata->hist_intr, MDSS_IRQ_SUSPEND);
+#ifdef CONFIG_SHDISP /* CUST_ID_00023 */
+	mdss_dsi_hs_clk_lane_enable(false);
+#endif /* CONFIG_SHDISP */
 
 	/* Power off DSI, is caller responsibility to do slave then master  */
 	if (ctx->ctl) {
@@ -1117,6 +1138,10 @@ static int mdss_mdp_cmd_intf_recovery(void *data, int event)
 	struct mdss_mdp_cmd_ctx *ctx = data;
 	unsigned long flags;
 	bool reset_done = false, notify_frame_timeout = false;
+#ifdef CONFIG_SHDISP /* CUST_ID_00052 */
+	struct mdss_mdp_cmd_ctx *sctx = NULL;
+	bool s_reset_done = false, s_notify_frame_timeout = false;
+#endif /* CONFIG_SHDISP */
 
 	if (!data) {
 		pr_err("%s: invalid ctx\n", __func__);
@@ -1142,6 +1167,28 @@ static int mdss_mdp_cmd_intf_recovery(void *data, int event)
 		reset_done = true;
 	}
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00052 */
+	if (ctx->ctl->mfd->split_mode == MDP_DUAL_LM_DUAL_DISPLAY) {
+		struct mdss_mdp_ctl *sctl = mdss_mdp_get_split_ctl(ctx->ctl);
+
+		if (sctl != NULL) {
+			sctx = (struct mdss_mdp_cmd_ctx *) sctl->intf_ctx[MASTER_CTX];
+		} else {
+			pr_warn("%s: sctl is NULL\n", __func__);
+		}
+	} else if (is_pingpong_split(ctx->ctl->mfd)) {
+		sctx = (struct mdss_mdp_cmd_ctx *)
+				ctx->ctl->intf_ctx[SLAVE_CTX];
+	}
+
+	if ((sctx != NULL) && (sctx->ctl != NULL)) {
+		if (atomic_read(&sctx->koff_cnt)) {
+			mdss_mdp_ctl_reset(sctx->ctl, true);
+			s_reset_done = true;
+		}
+	}
+#endif /* CONFIG_SHDISP */
+
 	spin_lock_irqsave(&ctx->koff_lock, flags);
 	if (reset_done && atomic_add_unless(&ctx->koff_cnt, -1, 0)) {
 		pr_debug("%s: intf_num=%d\n", __func__, ctx->ctl->intf_num);
@@ -1157,6 +1204,25 @@ static int mdss_mdp_cmd_intf_recovery(void *data, int event)
 
 	if (notify_frame_timeout)
 		mdss_mdp_ctl_notify(ctx->ctl, MDP_NOTIFY_FRAME_TIMEOUT);
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00052 */
+	if ((sctx != NULL) && (sctx->ctl != NULL)) {
+		spin_lock_irqsave(&sctx->koff_lock, flags);
+		if (s_reset_done && atomic_add_unless(&sctx->koff_cnt, -1, 0)) {
+			pr_debug("%s: intf_num=%d\n", __func__, sctx->ctl->intf_num);
+			mdss_mdp_irq_disable_nosync(MDSS_MDP_IRQ_TYPE_PING_PONG_COMP,
+				sctx->current_pp_num);
+			mdss_mdp_set_intr_callback_nosync(MDSS_MDP_IRQ_TYPE_PING_PONG_COMP,
+				sctx->current_pp_num, NULL, NULL);
+			if (mdss_mdp_cmd_do_notifier(sctx))
+				s_notify_frame_timeout = true;
+		}
+		spin_unlock_irqrestore(&sctx->koff_lock, flags);
+
+		if (s_notify_frame_timeout)
+			mdss_mdp_ctl_notify(sctx->ctl, MDP_NOTIFY_FRAME_TIMEOUT);
+	}
+#endif /* CONFIG_SHDISP */
 
 	return 0;
 }
@@ -1206,8 +1272,15 @@ static void mdss_mdp_cmd_pingpong_done(void *arg)
 			       atomic_read(&ctx->koff_cnt));
 		if (sync_ppdone) {
 			atomic_inc(&ctx->pp_done_cnt);
+#ifdef CONFIG_SHDISP /* CUST_ID_00064 */
+			if (!ctl->commit_in_progress) {
+				ctx->qos_deny_collapse = 0;
+				schedule_work(&ctx->pp_done_work);
+			}
+#else /* CONFIG_SHDISP */
 			if (!ctl->commit_in_progress)
 				schedule_work(&ctx->pp_done_work);
+#endif /* CONFIG_SHDISP */
 
 			mdss_mdp_resource_control(ctl,
 				MDP_RSRC_CTL_EVENT_PP_DONE);
@@ -1464,6 +1537,16 @@ static void pingpong_done_work(struct work_struct *work)
 		if (mdss_mdp_is_lineptr_supported(ctl)
 			&& !mdss_mdp_cmd_is_autorefresh_enabled(ctl))
 			mdss_mdp_cmd_lineptr_ctrl(ctl, false);
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00064 */
+		if (__mdss_mdp_cmd_is_panel_power_on_interactive(ctx)) {
+			mutex_lock(&ctx->qos_mtx);
+			if(!ctx->qos_deny_collapse) {
+				mdss_mdp_latency_allow_collapse();
+			}
+			mutex_unlock(&ctx->qos_mtx);
+		}
+#endif /* CONFIG_SHDISP */
 	}
 }
 
@@ -1865,6 +1948,10 @@ int mdss_mdp_cmd_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 	mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_CLK_CTRL,
 		(void *)&clk_ctrl, CTL_INTF_EVENT_FLAG_SKIP_BROADCAST);
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00024 */
+	mdss_mdp_cmd_tearcheck_enable(ctl, true);
+#endif /* CONFIG_SHDISP */
+
 	pdata->panel_info.cont_splash_enabled = 0;
 	if (sctl)
 		sctl->panel_data->panel_info.cont_splash_enabled = 0;
@@ -1874,6 +1961,8 @@ int mdss_mdp_cmd_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 	return ret;
 }
 
+/* COORDINATOR SH_Customize BUILDERR MODIFY start */
+#ifndef CONFIG_SHDISP
 static int __mdss_mdp_wait4pingpong(struct mdss_mdp_cmd_ctx *ctx)
 {
 	int rc = 0;
@@ -1896,6 +1985,8 @@ static int __mdss_mdp_wait4pingpong(struct mdss_mdp_cmd_ctx *ctx)
 
 	return rc;
 }
+#endif
+/* COORDINATOR SH_Customize BUILDERR MODIFY end */
 
 static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 {
@@ -1903,6 +1994,13 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	struct mdss_panel_data *pdata;
 	unsigned long flags;
 	int rc = 0, te_irq;
+#ifdef CONFIG_SHDISP /* CUST_ID_00066 */
+	s64 timeout = 0;
+	s64 current_time = 0;
+	s64 start_time = 0;
+	int i = 0;
+	int diff = 0;
+#endif /* CONFIG_SHDISP */
 
 	ctx = (struct mdss_mdp_cmd_ctx *) ctl->intf_ctx[MASTER_CTX];
 	if (!ctx) {
@@ -1918,7 +2016,37 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	pr_debug("%s: intf_num=%d ctx=%pK koff_cnt=%d\n", __func__,
 			ctl->intf_num, ctx, atomic_read(&ctx->koff_cnt));
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00066 */
+	start_time = ktime_to_ms(ktime_get());
+	timeout = start_time + KOFF_TIMEOUT_TIME;
+	MDSS_XLOG(ctl->num, jiffies>>32, jiffies);
+
+	for (i=0; i<WAIT_PINGPONG_RETRY; i++) {
+		rc = wait_event_timeout(ctx->pp_waitq,
+				atomic_read(&ctx->koff_cnt) == 0,
+				KOFF_TIMEOUT);
+		if (rc != 0) {
+			break;
+		}
+		if (atomic_read(&ctx->koff_cnt) == 0) {
+			rc = 1;
+			break;
+		}
+		current_time = ktime_to_ms(ktime_get());
+		if (current_time >= timeout) {
+			MDSS_XLOG(ctl->num, jiffies>>32, jiffies);
+			pr_err("%s: wait_event_timeout timeout.", __func__);
+			break;
+		}
+		diff = (int)(current_time-start_time);
+		MDSS_XLOG(ctl->num, jiffies>>32, jiffies, diff);
+		pr_warn("%s: incorrect jiffies. wait retry. diff=%d", __func__, diff);
+	}
+	pr_debug("%s: rc=%d current time=%lld start time=%lld retry=%d", 
+		__func__, rc, current_time, start_time, i);
+#else /* CONFIG_SHDISP */
 	rc = __mdss_mdp_wait4pingpong(ctx);
+#endif /* CONFIG_SHDISP */
 
 	trace_mdp_cmd_wait_pingpong(ctl->num,
 				atomic_read(&ctx->koff_cnt));
@@ -2736,6 +2864,12 @@ static int mdss_mdp_cmd_kickoff(struct mdss_mdp_ctl *ctl, void *arg)
 
 	trace_mdp_cmd_kickoff(ctl->num, atomic_read(&ctx->koff_cnt));
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00064 */
+	mutex_lock(&ctx->qos_mtx);
+	mdss_mdp_latency_deny_collapse();
+	ctx->qos_deny_collapse = 1;
+#endif /* CONFIG_SHDISP */
+
 	/*
 	 * Call state machine with kickoff event, we just do it for
 	 * current CTL, but internally state machine will check and
@@ -2809,6 +2943,10 @@ static int mdss_mdp_cmd_kickoff(struct mdss_mdp_ctl *ctl, void *arg)
 
 	MDSS_XLOG(ctl->num, ctx->current_pp_num,
 		sctx ? sctx->current_pp_num : -1, atomic_read(&ctx->koff_cnt));
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00064 */
+	mutex_unlock(&ctx->qos_mtx);
+#endif /* CONFIG_SHDISP */
 	return 0;
 }
 
@@ -2915,6 +3053,13 @@ int mdss_mdp_cmd_ctx_stop(struct mdss_mdp_ctl *ctl,
 		ctx->default_pp_num, NULL, NULL);
 	mdss_mdp_set_intr_callback_nosync(MDSS_MDP_IRQ_TYPE_PING_PONG_COMP,
 		ctx->default_pp_num, NULL, NULL);
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00064 */
+	mutex_lock(&ctx->qos_mtx);
+	mdss_mdp_latency_allow_collapse();
+	ctx->qos_deny_collapse = 0;
+	mutex_unlock(&ctx->qos_mtx);
+#endif /* CONFIG_SHDISP */
 
 	memset(ctx, 0, sizeof(*ctx));
 	/* intf stopped,  no more kickoff */
@@ -3262,6 +3407,10 @@ static int mdss_mdp_cmd_ctx_setup(struct mdss_mdp_ctl *ctl,
 	if (ret)
 		pr_err("tearcheck setup failed\n");
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00064 */
+	mutex_init(&ctx->qos_mtx);
+#endif /* CONFIG_SHDISP */
+
 	return ret;
 }
 
@@ -3527,3 +3676,44 @@ int mdss_mdp_cmd_start(struct mdss_mdp_ctl *ctl)
 	return 0;
 }
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00024 */
+int mdss_mdp_cmd_tearcheck_enable(struct mdss_mdp_ctl *ctl, bool enable)
+{
+	int ret;
+
+	pr_debug("%s: in ctl=%p enable=%d\n", __func__, ctl, enable);
+
+	if (!ctl) {
+		pr_err("%s: ctl is NULL.\n", __func__);
+		return -EINVAL;
+	}
+
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
+	ret = mdss_mdp_tearcheck_enable(ctl, enable);
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
+
+	pr_debug("%s: out ret=%d\n", __func__, ret);
+	return ret;
+}
+#endif /* CONFIG_SHDISP */
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00043 */
+int	mdss_mdp_cmd_flush_delayed_off_clk_work(struct mdss_mdp_ctl *pctl)
+{
+	struct mdss_mdp_cmd_ctx *ctx;
+	pr_debug("%s: in\n", __func__);
+	if (!pctl) {
+		pr_err("LCDERR:[%s] pctl is NULL.\n", __func__);
+		return -EIO;
+	}
+	ctx = (struct mdss_mdp_cmd_ctx *) pctl->intf_ctx[MASTER_CTX];
+	if (!ctx) {
+		pr_err("LCDERR:[%s] ctx is NULL.\n", __func__);
+		return -EIO;
+	}
+
+	flush_delayed_work(&ctx->delayed_off_clk_work);
+	pr_debug("%s: out ", __func__);
+	return 0;
+}
+#endif /* CONFIG_SHDISP */

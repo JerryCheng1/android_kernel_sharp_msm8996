@@ -26,6 +26,17 @@
 struct mdp_csc_cfg mdp_csc_8bit_convert[MDSS_MDP_MAX_CSC] = {
 	[MDSS_MDP_CSC_YUV2RGB_601L] = {
 		0,
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+		{
+			0x0227, 0x1FF6, 0x03AB,
+			0x0227, 0x1F86, 0x1EE0,
+			0x0227, 0x0452, 0x1FFA,
+		},
+		{ 0x01F4, 0x0180, 0x0180,},
+		{ 0x0, 0x0, 0x0,},
+		{ 0x0, 0xFF, 0x0, 0xFF, 0x0, 0xFF,},
+		{ 0x0, 0xFF, 0x0, 0xFF, 0x0, 0xFF,},
+#else /* CONFIG_SHDISP */
 		{
 			0x0254, 0x0000, 0x0331,
 			0x0254, 0xff37, 0xfe60,
@@ -35,9 +46,21 @@ struct mdp_csc_cfg mdp_csc_8bit_convert[MDSS_MDP_MAX_CSC] = {
 		{ 0x0, 0x0, 0x0,},
 		{ 0x10, 0xeb, 0x10, 0xf0, 0x10, 0xf0,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+#endif /* CONFIG_SHDISP */
 	},
 	[MDSS_MDP_CSC_YUV2RGB_601FR] = {
 		0,
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+		{
+			0x0200, 0x0000, 0x0326,
+			0x0200, 0x1FA0, 0x1F10,
+			0x0200, 0x03B6, 0x0000,
+		},
+		{ 0x0000, 0x0180, 0x0180,},
+		{ 0x0, 0x0, 0x0,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+#else /* CONFIG_SHDISP */
 		{
 			0x0200, 0x0000, 0x02ce,
 			0x0200, 0xff50, 0xfe92,
@@ -47,9 +70,21 @@ struct mdp_csc_cfg mdp_csc_8bit_convert[MDSS_MDP_MAX_CSC] = {
 		{ 0x0, 0x0, 0x0,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+#endif /* CONFIG_SHDISP */
 	},
 	[MDSS_MDP_CSC_YUV2RGB_709L] = {
 		0,
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+		{
+			0x0227, 0x1FF6, 0x03AB,
+			0x0227, 0x1F86, 0x1EE0,
+			0x0227, 0x0452, 0x1FFA,
+		},
+		{ 0x01F4, 0x0180, 0x0180,},
+		{ 0x0, 0x0, 0x0,},
+		{ 0x0, 0xFF, 0x0, 0xFF, 0x0, 0xFF,},
+		{ 0x0, 0xFF, 0x0, 0xFF, 0x0, 0xFF,},
+#else /* CONFIG_SHDISP */
 		{
 			0x0254, 0x0000, 0x0396,
 			0x0254, 0xff93, 0xfeef,
@@ -59,6 +94,7 @@ struct mdp_csc_cfg mdp_csc_8bit_convert[MDSS_MDP_MAX_CSC] = {
 		{ 0x0, 0x0, 0x0,},
 		{ 0x10, 0xeb, 0x10, 0xf0, 0x10, 0xf0,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+#endif /* CONFIG_SHDISP */
 	},
 	[MDSS_MDP_CSC_YUV2RGB_2020L] = {
 		0,
@@ -4082,10 +4118,15 @@ static void pp_update_hist_lut(char __iomem *addr,
 	else
 		writel_relaxed(1, addr + 16);
 }
-
+#ifdef CONFIG_SHDISP /* CUST_ID_00057 */
+int mdss_mdp_argc_config(struct msm_fb_data_type *mfd,
+				struct mdp_pgc_lut_data *config,
+				u32 *copyback, u32 copy_from_kernel)
+#else /* CONFIG_SHDISP */
 int mdss_mdp_argc_config(struct msm_fb_data_type *mfd,
 				struct mdp_pgc_lut_data *config,
 				u32 *copyback)
+#endif /* CONFIG_SHDISP */
 {
 	int ret = 0;
 	u32 disp_num, num = 0, is_lm = 0;
@@ -4225,8 +4266,13 @@ clock_off:
 		if (pp_ops[GC].pp_set_config) {
 			pr_debug("version of gc is %d\n", config->version);
 			is_lm = (PP_LOCAT(config->block) == MDSS_PP_LM_CFG);
+#ifdef CONFIG_SHDISP /* CUST_ID_00057 */
+			ret = pp_pgc_lut_cache_params(config, mdss_pp_res,
+				((is_lm) ? LM : DSPP), copy_from_kernel);
+#else /* CONFIG_SHDISP */
 			ret = pp_pgc_lut_cache_params(config, mdss_pp_res,
 				((is_lm) ? LM : DSPP));
+#endif /* CONFIG_SHDISP */
 			if (ret) {
 				pr_err("pgc cache params failed, ret %d\n",
 					ret);
@@ -4399,6 +4445,28 @@ static int mdss_mdp_panel_default_dither_config(struct msm_fb_data_type *mfd,
 	if (enable) {
 		switch (panel_bpp) {
 		case 24:
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+			dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
+			switch (dither.version) {
+			case mdp_dither_v1_7:
+				dither_data.g_y_depth = 6;
+				dither_data.r_cr_depth = 6;
+				dither_data.b_cb_depth = 6;
+				/*
+				 * Use default dither table by setting len to 0
+				 */
+				dither_data.len = 0;
+				dither.cfg_payload = &dither_data;
+				break;
+			case mdp_pp_legacy:
+			default:
+				dither.g_y_depth = 6;
+				dither.r_cr_depth = 6;
+				dither.b_cb_depth = 6;
+				dither.cfg_payload = NULL;
+				break;
+			}
+#else
 			dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
 			switch (dither.version) {
 			case mdp_dither_v1_7:
@@ -4419,6 +4487,7 @@ static int mdss_mdp_panel_default_dither_config(struct msm_fb_data_type *mfd,
 				dither.cfg_payload = NULL;
 				break;
 			}
+#endif /* CONFIG_SHDISP */
 			break;
 		case 18:
 			dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
@@ -7568,3 +7637,137 @@ static int pp_ppb_setup(struct mdss_mdp_mixer *mixer)
 	}
 	return ret;
 }
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00057 */
+static uint32_t gc_lut_config_data[PGC_LUT_ENTRIES * 3];
+
+#define MDSS_MDP_GC_LUT_POS(x) (((x) << 2) + (((x) >> 6) & 0x03))
+static void mdss_mdp_gc_lut_num_conv(uint8_t *base, uint32_t *tbl)
+{
+	uint32_t difference, wkdifference;
+	uint32_t num, cnt;
+	uint32_t i, j;
+
+	num = (uint32_t)base[0];
+	for (i = 0; i < GC_LUT_ENTRIES; i++) {
+		if (i < (GC_LUT_ENTRIES - 1)) {
+			difference = (uint32_t)base[i + 1];
+			cnt = MDSS_MDP_GC_LUT_POS(i + 1) - MDSS_MDP_GC_LUT_POS(i);
+		} else {
+			difference = 0;
+			cnt = 1;
+		}
+
+		for (j = 0; j < cnt; j++) {
+			if ((difference == 0) || (j == 0) ) {
+				wkdifference = 0;
+			} else {
+				wkdifference = ((difference * 100) * j) / cnt;
+				if ((wkdifference % 100) >= 50) {
+					wkdifference = (wkdifference / 100) + 1;
+				} else {
+					wkdifference = wkdifference / 100;
+				}
+			}
+			if ((num + wkdifference) < 0x400) {
+				tbl[MDSS_MDP_GC_LUT_POS(i) + j] = (num + wkdifference);
+			} else {
+				tbl[MDSS_MDP_GC_LUT_POS(i) + j] = 0x03FF;
+			}
+		}
+		num += difference;
+	}
+}
+
+int mdss_mdp_all_gc_lut_config(struct msm_fb_data_type *mfd, struct mdp_all_gc_lut_data *config, u32 *copyback)
+{
+	int ret = 0;
+	struct mdp_pgc_lut_data pgc_lut_data;
+	struct mdp_pgc_lut_data_v1_7 v17_usr_config;
+	uint32_t *pgc_lut_config_data;
+	u32 copy_from_kernel = 1;
+	
+	if ((mfd == NULL) || (config == NULL) || (copyback == NULL)) {
+		pr_err("%s, invalid param is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	memset(&pgc_lut_data, 0x00, sizeof(pgc_lut_data));
+	memset(&v17_usr_config, 0x00, sizeof(v17_usr_config));
+	pgc_lut_data.block = MDSS_PP_DSPP_CFG | MDP_LOGICAL_BLOCK_DISP_0;
+	pgc_lut_data.version = mdp_pgc_v1_7;
+	pgc_lut_data.cfg_payload = &v17_usr_config;
+
+	if (config->ops & MDP_PP_OPS_READ) {
+		pr_err("%s, all read is not support\n", __func__);
+		ret = -EINVAL;
+	} else if (config->ops & MDP_PP_OPS_WRITE) {
+		pgc_lut_data.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
+		v17_usr_config.len = PGC_LUT_ENTRIES;
+
+		pgc_lut_config_data = gc_lut_config_data;
+		mdss_mdp_gc_lut_num_conv(config->g_data ,pgc_lut_config_data);
+		v17_usr_config.c0_data = pgc_lut_config_data;
+
+		pgc_lut_config_data += PGC_LUT_ENTRIES;
+		mdss_mdp_gc_lut_num_conv(config->b_data ,pgc_lut_config_data);
+		v17_usr_config.c1_data = pgc_lut_config_data;
+
+		pgc_lut_config_data += PGC_LUT_ENTRIES;
+		mdss_mdp_gc_lut_num_conv(config->r_data ,pgc_lut_config_data);
+		v17_usr_config.c2_data = pgc_lut_config_data;
+
+		ret = mdss_mdp_argc_config(mfd, &pgc_lut_data, copyback, copy_from_kernel);
+	} else {
+		pr_err("%s, invalid ops param\n", __func__);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+int mdss_mdp_specified_gc_lut_config(struct msm_fb_data_type *mfd, struct mdp_specified_gc_lut_data *config, u32 *copyback)
+{
+	int ret = 0;
+	struct mdss_data_type *mdata = NULL;
+	struct mdss_mdp_ctl *ctl = NULL;
+	u32 num = 0;
+	u32 disp_num;
+
+	if ((mfd == NULL) || (config == NULL) || (copyback == NULL)) {
+		pr_err("%s, invalid param is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	if (config->index >= PGC_LUT_ENTRIES) {
+		pr_err("%s, index(%d) is over MAX\n", __func__,config->index);
+		return -EINVAL;
+	}
+
+	mdata = mdss_mdp_get_mdata();
+	disp_num = 0;
+	ctl = mfd_to_ctl(mfd);
+	num = (ctl && ctl->mixer_left) ? ctl->mixer_left->num : -1;
+	if (num < 0) {
+		pr_err("invalid mfd index %d config\n",
+				mfd->index);
+		return -EPERM;
+	}
+
+	mutex_lock(&mdss_pp_mutex);
+	if (config->ops & MDP_PP_OPS_READ) {
+		ret = mdss_mdp_specified_gc_lut_read(config, mdss_pp_res);
+		*copyback = 1;
+	} else if (config->ops & MDP_PP_OPS_WRITE) {
+		ret = mdss_mdp_specified_gc_lut_write(config, mdss_pp_res);
+		mdss_pp_res->pp_disp_flags[disp_num] |= PP_FLAGS_DIRTY_PGC;
+		*copyback = 0;
+	} else {
+		pr_err("%s, invalid ops param\n", __func__);
+		ret = -EINVAL;
+	}
+
+	mutex_unlock(&mdss_pp_mutex);
+	return ret;
+}
+#endif /* CONFIG_SHDISP */

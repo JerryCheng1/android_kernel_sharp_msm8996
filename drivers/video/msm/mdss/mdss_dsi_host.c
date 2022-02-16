@@ -29,6 +29,10 @@
 #include "mdss_debug.h"
 #include "mdss_smmu.h"
 #include "mdss_dsi_phy.h"
+#ifdef CONFIG_SHDISP /* CUST_ID_00034 */
+#include "mdss_diag.h"
+#include "mdss_shdisp.h"
+#endif /* CONFIG_SHDISP */
 
 #define VSYNC_PERIOD 17
 #define DMA_TX_TIMEOUT 200
@@ -712,12 +716,18 @@ end:
 	mdss_dsi_wait_clk_lane_to_stop(ctrl);
 
 	ctrl->clk_lane_cnt = 0;
+#ifdef CONFIG_SHDISP /* CUST_ID_00032 */
+	mdss_dsi_clk_ctrl(ctrl, ctrl->dsi_clk_handle, MDSS_DSI_ALL_CLKS,
+			  MDSS_DSI_CLK_OFF);
+#endif /* CONFIG_SHDISP */
 release:
 	pr_debug("%s: ndx=%d, cnt=%d\n", __func__,
 			ctrl->ndx, ctrl->clk_lane_cnt);
 
+#ifndef CONFIG_SHDISP /* CUST_ID_00032 */
 	mdss_dsi_clk_ctrl(ctrl, ctrl->dsi_clk_handle, MDSS_DSI_ALL_CLKS,
 			  MDSS_DSI_CLK_OFF);
+#endif /* CONFIG_SHDISP */
 	mutex_unlock(&ctrl->clk_lane_mutex);
 }
 
@@ -3126,7 +3136,13 @@ void mdss_dsi_error(struct mdss_dsi_ctrl_pdata *ctrl)
 	/* DSI_ERR_INT_MASK0 */
 	err_handled |= mdss_dsi_clk_status(ctrl);	/* Mask0, 0x10000000 */
 	err_handled |= mdss_dsi_fifo_status(ctrl);	/* mask0, 0x133d00 */
+#ifdef CONFIG_SHDISP  /* CUST_ID_00034 */
+	if (mdss_diag_mipi_check_get_exec_state() == false) {
+		err_handled |= mdss_dsi_ack_err_status(ctrl);	/* mask0, 0x01f */
+	}
+#else  /* CONFIG_SHDISP */
 	err_handled |= mdss_dsi_ack_err_status(ctrl);	/* mask0, 0x01f */
+#endif /* CONFIG_SHDISP */
 	err_handled |= mdss_dsi_timeout_status(ctrl);	/* mask0, 0x0e0 */
 	err_handled |= mdss_dsi_status(ctrl);		/* mask0, 0xc0100 */
 	err_handled |= mdss_dsi_dln0_phy_err(ctrl, true);/* mask0, 0x3e00000 */
@@ -3236,3 +3252,83 @@ irqreturn_t mdss_dsi_isr(int irq, void *ptr)
 
 	return IRQ_HANDLED;
 }
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00023 */
+void mdss_dsi_hs_clk_lane_enable(bool enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl;
+	struct mdss_dsi_ctrl_pdata *sctrl;
+
+	pr_debug("%s: in enable=%d\n", __func__, enable);
+
+	ctrl = mdss_dsi_get_ctrl_clk_master();
+	sctrl = mdss_dsi_get_ctrl_clk_slave();
+
+	if (!ctrl) {
+		pr_err("%s: ctrl is NULL.\n", __func__);
+		return;
+	}
+
+	pr_debug("%s: ctrl=%p sctrl=%p\n", __func__, ctrl, sctrl);
+
+	if (enable) {
+		mdss_dsi_start_hs_clk_lane(ctrl);
+		if (sctrl) {
+			mdss_dsi_start_hs_clk_lane(sctrl);
+		}
+	} else {
+		mdss_dsi_stop_hs_clk_lane(ctrl);
+		if (sctrl) {
+			mdss_dsi_stop_hs_clk_lane(sctrl);
+		}
+	}
+
+	pr_debug("%s: out\n", __func__);
+}
+#endif /* CONFIG_SHDISP */
+
+#ifdef CONFIG_SHDISP /* CUST_ID_00055 */
+int mdss_dsi_cmd_bus_ctrl(struct mdss_dsi_ctrl_pdata *ctrl, bool enable)
+{
+	int rc = 0;
+
+	if (!ctrl) {
+		pr_err("invalid ctrl.\n");
+		return -EINVAL;
+	}
+
+	pr_debug("%s: CALL enable=%d\n", __func__, enable);
+
+	if (enable) {
+		/*
+		* mdss interrupt is generated in mdp core clock domain
+		* mdp clock need to be enabled to receive dsi interrupt
+		* also, axi bus bandwidth need since dsi controller will
+		* fetch dcs commands from axi bus
+		*/
+		rc = mdss_dsi_bus_bandwidth_vote(ctrl->shared_data, true);
+		if (rc) {
+			pr_err("%s: Bus bw vote failed\n", __func__);
+		}
+
+		if (ctrl->mdss_util->iommu_ctrl) {
+			rc = ctrl->mdss_util->iommu_ctrl(1);
+			if (IS_ERR_VALUE(rc)) {
+				pr_err("IOMMU attach failed\n");
+			}
+		}
+		mdss_dsi_clk_ctrl(ctrl, ctrl->dsi_clk_handle, MDSS_DSI_ALL_CLKS,
+				  MDSS_DSI_CLK_ON);
+	} else {
+		if (ctrl->mdss_util->iommu_ctrl) {
+			ctrl->mdss_util->iommu_ctrl(0);
+		}
+
+		(void)mdss_dsi_bus_bandwidth_vote(ctrl->shared_data, false);
+		mdss_dsi_clk_ctrl(ctrl, ctrl->dsi_clk_handle, MDSS_DSI_ALL_CLKS,
+			  MDSS_DSI_CLK_OFF);
+	}
+
+	return rc;
+}
+#endif /* CONFIG_SHDISP */

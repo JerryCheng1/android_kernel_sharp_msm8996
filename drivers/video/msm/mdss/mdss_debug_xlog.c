@@ -21,6 +21,9 @@
 #include "mdss.h"
 #include "mdss_mdp.h"
 #include "mdss_debug.h"
+#ifdef CONFIG_SHDISP /* CUST_ID_00030 */
+#include "mdss_shdisp.h"
+#endif /* CONFIG_SHDISP */
 
 #ifdef CONFIG_FB_MSM_MDSS_XLOG_DEBUG
 #define XLOG_DEFAULT_ENABLE 1
@@ -85,6 +88,14 @@ struct mdss_dbg_xlog {
 
 static inline bool mdss_xlog_is_enabled(u32 flag)
 {
+#ifdef CONFIG_SHDISP /* CUST_ID_00030 */
+	if (!mdss_shdisp_get_bdic_is_exist()) {
+		return false;
+	}
+	if (!mdss_shdisp_get_upper_unit_is_connected()) {
+		return false;
+	}
+#endif /* CONFIG_SHDISP */
 	return (flag & mdss_dbg_xlog.xlog_enable) ||
 		(flag == MDSS_XLOG_ALL && mdss_dbg_xlog.xlog_enable);
 }
@@ -683,6 +694,12 @@ static ssize_t mdss_xlog_dump_read(struct file *file, char __user *buff,
 
 	if (__mdss_xlog_dump_calc_range()) {
 		len = mdss_xlog_dump_entry(xlog_buf, MDSS_XLOG_BUF_MAX);
+#ifdef CONFIG_SHDISP		
+		if (len < 0 || len > count) {
+			pr_err("len is more than the size of user buffer\n");
+			return 0;
+		}
+#endif
 		if (copy_to_user(buff, xlog_buf, len))
 			return -EFAULT;
 		*ppos += len;

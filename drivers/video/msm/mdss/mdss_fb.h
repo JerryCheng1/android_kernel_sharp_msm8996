@@ -353,6 +353,16 @@ struct msm_fb_data_type {
 	struct sg_table *fb_table;
 
 	bool mdss_fb_split_stored;
+#ifdef CONFIG_SHDISP /* CUST_ID_00054 */
+	struct completion panel_state_chg_comp;
+#endif  /* CONFIG_SHDISP */
+#ifdef CONFIG_SHDISP /* CUST_ID_00051 */
+	bool kickoff_with_recovery;
+#endif  /* CONFIG_SHDISP */
+#ifdef CONFIG_SHDISP /* CUST_ID_00067 */
+	int clk_on_req;
+	struct mutex clk_on_lock;
+#endif  /* CONFIG_SHDISP */
 
 	u32 wait_for_kickoff;
 	u32 thermal_level;
@@ -468,4 +478,8 @@ void mdss_fb_report_panel_dead(struct msm_fb_data_type *mfd);
 void mdss_panelinfo_to_fb_var(struct mdss_panel_info *pinfo,
 						struct fb_var_screeninfo *var);
 void mdss_fb_calc_fps(struct msm_fb_data_type *mfd);
+#ifdef CONFIG_SHDISP /* CUST_ID_00035 */
+int mdss_fb_base_fps_low_mode(void);
+#endif /* CONFIG_SHDISP */
+
 #endif /* MDSS_FB_H */
