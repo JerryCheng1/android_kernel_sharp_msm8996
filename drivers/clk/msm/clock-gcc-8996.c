@@ -1019,7 +1019,23 @@ static struct rcg_clk blsp2_qup6_i2c_apps_clk_src = {
 };
 
 static struct clk_freq_tbl ftbl_blsp2_qup6_spi_apps_clk_src[] = {
+#if defined( CONFIG_SHTPS_SY3X00_DEV )
+	F(    400000,         cxo_clk_src,   12,    1,     4),
+	F(    600000,         cxo_clk_src,    8,    1,     4),
+	F(    800000,         cxo_clk_src,   12,    1,     2),
+#endif  /* #if defined( CONFIG_SHTPS_SY3X00_DEV ) */
 	F(    960000,         cxo_clk_src,   10,    1,     2),
+#if defined( CONFIG_SHTPS_SY3X00_DEV )
+	F(   1100000, gpll0_out_main,    5,    1,   109),
+	F(   1920000,         cxo_clk_src,   10,    1,     0),
+	F(   2000000, gpll0_out_main,   10,    1,    30),
+	F(   2400000,         cxo_clk_src,    8,    1,     0),
+	F(   3000000, gpll0_out_main,   10,    1,    20),
+	F(   3200000,         cxo_clk_src,    2,    1,     3),
+	F(   3400000, gpll0_out_main,    8,    1,    22),
+	F(   3750000, gpll0_out_main,   10,    1,    16),
+	F(   4000000, gpll0_out_main,   10,    1,    15),
+#endif	/* #if defined( CONFIG_SHTPS_SY3X00_DEV ) */
 	F(   4800000,         cxo_clk_src,    4,    0,     0),
 	F(   9600000,         cxo_clk_src,    2,    0,     0),
 	F(  15000000, gpll0_out_main,   10,    1,     4),
