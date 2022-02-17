@@ -13,6 +13,10 @@
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00039 */
+#include <sharp/sh_boot_manager.h>
+#endif /* CONFIG_SHDISP */
+
 #include "mdss_fb.h"
 #include "mdss_mdp.h"
 #include "mdss_mdp_pp.h"
@@ -4446,25 +4450,27 @@ static int mdss_mdp_panel_default_dither_config(struct msm_fb_data_type *mfd,
 		switch (panel_bpp) {
 		case 24:
 #ifdef CONFIG_SHDISP /* CUST_ID_00039 */
-			dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
-			switch (dither.version) {
-			case mdp_dither_v1_7:
-				dither_data.g_y_depth = 6;
-				dither_data.r_cr_depth = 6;
-				dither_data.b_cb_depth = 6;
-				/*
-				 * Use default dither table by setting len to 0
-				 */
-				dither_data.len = 0;
-				dither.cfg_payload = &dither_data;
-				break;
-			case mdp_pp_legacy:
-			default:
-				dither.g_y_depth = 6;
-				dither.r_cr_depth = 6;
-				dither.b_cb_depth = 6;
-				dither.cfg_payload = NULL;
-				break;
+			if (sh_boot_get_bootmode() != SH_BOOT_D && sh_boot_get_bootmode() != SH_BOOT_F_F) {
+				dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
+				switch (dither.version) {
+				case mdp_dither_v1_7:
+					dither_data.g_y_depth = 6;
+					dither_data.r_cr_depth = 6;
+					dither_data.b_cb_depth = 6;
+					/*
+					 * Use default dither table by setting len to 0
+					 */
+					dither_data.len = 0;
+					dither.cfg_payload = &dither_data;
+					break;
+				case mdp_pp_legacy:
+				default:
+					dither.g_y_depth = 6;
+					dither.r_cr_depth = 6;
+					dither.b_cb_depth = 6;
+					dither.cfg_payload = NULL;
+					break;
+				}
 			}
 #else
 			dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;

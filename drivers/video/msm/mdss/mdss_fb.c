@@ -62,6 +62,9 @@
 #include "mdss_diag.h"
 #endif /* CONFIG_SHDISP */
 
+#ifdef CONFIG_SHDISP /* CUST_ID_00059 */ /* CUST_ID_00069 */
+#include <sharp/sh_boot_manager.h>
+#endif /* CONFIG_SHDISP */
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
@@ -2821,6 +2824,9 @@ static int mdss_fb_open(struct fb_info *info, int user)
 #ifdef CONFIG_SHDISP /* CUST_ID_00019 */
 	static int first_unblank=0;
 #endif /* CONFIG_SHDISP */
+#ifdef CONFIG_SHDISP /* CUST_ID_00059 */
+	int bootmode = (sh_boot_get_bootmode() != SH_BOOT_O_C && sh_boot_get_bootmode() != SH_BOOT_U_O_C);
+#endif /* CONFIG_SHDISP */
 
 	if (mfd->shutdown_pending) {
 		pr_err_once("Shutdown pending. Aborting operation. Request from pid:%d name=%s\n",
@@ -2856,7 +2862,7 @@ static int mdss_fb_open(struct fb_info *info, int user)
 		}
 	}
 #else /* CONFIG_SHDISP */
-	if ((!mfd->ref_cnt || !first_unblank) && user) {
+	if ((!mfd->ref_cnt || !first_unblank) && user && bootmode) {
 		pr_debug("%s: first fb open from user space!\n", __func__);
 		result = mdss_fb_blank_sub(FB_BLANK_UNBLANK, info,
 					   mfd->op_enable);
@@ -5093,6 +5099,14 @@ static bool check_not_supported_ioctl(u32 cmd)
 #else
 static bool check_not_supported_ioctl(u32 cmd)
 {
+#ifdef CONFIG_SHDISP /* CUST_ID_00069*/
+	int bootmode;
+
+	bootmode = sh_boot_get_bootmode();
+	if ((bootmode == SH_BOOT_D) || (bootmode == SH_BOOT_F_F)) {
+		return false;
+	}
+#endif /* CONFIG_SHDISP */
 	return((cmd == MSMFB_OVERLAY_SET) || (cmd == MSMFB_OVERLAY_UNSET) ||
 		(cmd == MSMFB_OVERLAY_GET) || (cmd == MSMFB_OVERLAY_PREPARE) ||
 		(cmd == MSMFB_DISPLAY_COMMIT) || (cmd == MSMFB_OVERLAY_PLAY) ||

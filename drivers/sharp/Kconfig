@@ -4,6 +4,7 @@
 
 menu "SHARP Device Drivers"
 
+source "drivers/sharp/shboot/Kconfig"
 source "drivers/sharp/shgrip/Kconfig"
 
 endmenu

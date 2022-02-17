@@ -141,6 +141,7 @@ obj-$(CONFIG_STAGING)		+= staging/
 obj-y				+= platform/
 #common clk code
 obj-y				+= clk/
+obj-$(CONFIG_SHBOOT_CUST)	+= sharp/shboot/
 obj-$(CONFIG_SHDISP)        += sharp/shdisp/
 #/* SH_AUDIO_DRIVER -> */ /* 21-002 */
 obj-$(CONFIG_SH_AUDIO_SMARTAMP) += sharp/shaudio/
