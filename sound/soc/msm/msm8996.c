@@ -38,6 +38,15 @@
 #include "../codecs/wcd9335.h"
 #include "../codecs/wsa881x.h"
 
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-038 */
+#include <sharp/shub_driver.h>
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-038 */
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-002 */
+#ifdef CONFIG_SH_AUDIO_SMARTAMP
+#include <sharp/shsmartamp_ssm4329.h>
+#endif  /* CONFIG_SH_AUDIO_SMARTAMP */
+#endif  /* CONFIG_SH_AUDIO_DRIVER */ /* 21-002 */
+
 #define DRV_NAME "msm8996-asoc-snd"
 
 #define SAMPLING_RATE_8KHZ      8000
@@ -323,6 +332,32 @@ exit:
 	return ret;
 }
 
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-002 */
+#ifdef CONFIG_SH_AUDIO_SMARTAMP
+static void msm8996_ext_control(struct snd_soc_codec *codec)
+{
+	pr_debug("%s(): Smart AMP %s\n",
+		__func__, (msm8996_spk_control == MSM8996_SPK_ON) ? "Enable" : "Disable");
+	if (msm8996_spk_control == MSM8996_SPK_ON) {
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-038 */
+		shub_api_stop_pedometer_func(SHUB_STOP_PED_TYPE_SPE);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-038 */
+		shsmartamp_control(1);
+	} else {
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-038 */
+		shub_api_restart_pedometer_func(SHUB_STOP_PED_TYPE_SPE);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-038 */
+		shsmartamp_control(0);
+	}
+}
+#else  /* CONFIG_SH_AUDIO_SMARTAMP */
+static void msm8996_ext_control(struct snd_soc_codec *codec)
+{
+	pr_err("%s(): Empty API for SMARTAMP\n", __func__);
+	return;
+}
+#endif  /* CONFIG_SH_AUDIO_SMARTAMP */
+#else  /* CONFIG_SH_AUDIO_DRIVER */ /* 21-002 */
 static void msm8996_ext_control(struct snd_soc_codec *codec)
 {
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
@@ -340,6 +375,7 @@ static void msm8996_ext_control(struct snd_soc_codec *codec)
 	mutex_unlock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 }
+#endif  /* CONFIG_SH_AUDIO_DRIVER */ /* 21-002 */
 
 static int msm8996_get_spk(struct snd_kcontrol *kcontrol,
 			      struct snd_ctl_elem_value *ucontrol)
@@ -573,6 +609,10 @@ static const struct snd_soc_dapm_widget msm8996_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("hifi amp", msm_hifi_ctrl_event),
 	SND_SOC_DAPM_MIC("Handset Mic", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-001 */
+	SND_SOC_DAPM_MIC("Primary Mic", NULL),
+	SND_SOC_DAPM_MIC("Secondary Mic", NULL),
+#endif  /* CONFIG_SH_AUDIO_DRIVER */ /* 21-001 */
 	SND_SOC_DAPM_MIC("ANCRight Headset Mic", NULL),
 	SND_SOC_DAPM_MIC("ANCLeft Headset Mic", NULL),
 	SND_SOC_DAPM_MIC("Analog Mic4", NULL),
@@ -2021,7 +2061,11 @@ static void *def_tasha_mbhc_cal(void)
 	}
 
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(tasha_wcd_cal)->X) = (Y))
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-079 */
+	S(v_hs_max, 1600);
+#else
 	S(v_hs_max, 1500);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-079 */
 #undef S
 #define S(X, Y) ((WCD_MBHC_CAL_BTN_DET_PTR(tasha_wcd_cal)->X) = (Y))
 	S(num_btn, WCD_MBHC_DEF_BUTTONS);

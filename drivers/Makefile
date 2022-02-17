@@ -142,6 +142,9 @@ obj-y				+= platform/
 #common clk code
 obj-y				+= clk/
 obj-$(CONFIG_SHDISP)        += sharp/shdisp/
+#/* SH_AUDIO_DRIVER -> */ /* 21-002 */
+obj-$(CONFIG_SH_AUDIO_SMARTAMP) += sharp/shaudio/
+#/* SH_AUDIO_DRIVER <- */ /* 21-002 */
 
 obj-$(CONFIG_MAILBOX)		+= mailbox/
 obj-$(CONFIG_HWSPINLOCK)	+= hwspinlock/

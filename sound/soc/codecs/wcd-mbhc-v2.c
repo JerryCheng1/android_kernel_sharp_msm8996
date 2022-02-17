@@ -55,6 +55,13 @@
 #define ANC_DETECT_RETRY_CNT 7
 #define WCD_MBHC_SPL_HS_CNT  2
 
+/* SH_AUDIO_DRIVER -> */ /* A-003 */
+#ifdef CONFIG_SH_AUDIO_DRIVER
+#define BUTTON_TIMING_DELAY_FOR_APPLE 1500
+unsigned long button_timing = 0;
+#endif /* CONFIG_SH_AUDIO_DRIVER */
+/* SH_AUDIO_DRIVER <- */ /* A-003 */
+
 static int det_extn_cable_en;
 module_param(det_extn_cable_en, int,
 		S_IRUGO | S_IWUSR | S_IWGRP);
@@ -555,7 +562,9 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 {
 	struct snd_soc_codec *codec = mbhc->codec;
 	bool is_pa_on = false;
-
+/* SH_AUDIO_DRIVER -> */ /* B-023 */
+	bool flg_dtv_antenna = false;
+/* SH_AUDIO_DRIVER <- */ /* B-023 */
 	WCD_MBHC_RSC_ASSERT_LOCKED(mbhc);
 
 	pr_debug("%s: enter insertion %d hph_status %x\n",
@@ -675,6 +684,9 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 			mbhc->jiffies_atreport = jiffies;
 		} else if (jack_type == SND_JACK_LINEOUT) {
 			mbhc->current_plug = MBHC_PLUG_TYPE_HIGH_HPH;
+/* SH_AUDIO_DRIVER -> */ /* B-023 */
+			flg_dtv_antenna = true;
+/* SH_AUDIO_DRIVER <- */ /* B-023 */
 		} else if (jack_type == SND_JACK_ANC_HEADPHONE)
 			mbhc->current_plug = MBHC_PLUG_TYPE_ANC_HEADPHONE;
 
@@ -687,6 +699,7 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 			(!is_pa_on)) {
 				mbhc->mbhc_cb->compute_impedance(mbhc,
 						&mbhc->zl, &mbhc->zr);
+#ifndef CONFIG_SH_AUDIO_DRIVER
 			if ((mbhc->zl > mbhc->mbhc_cfg->linein_th &&
 				mbhc->zl < MAX_IMPED) &&
 				(mbhc->zr > mbhc->mbhc_cfg->linein_th &&
@@ -706,15 +719,27 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 				pr_debug("%s: Marking jack type as SND_JACK_LINEOUT\n",
 				__func__);
 			}
+#endif /* CONFIG_SH_AUDIO_DRIVER */
 		}
 
 		mbhc->hph_status |= jack_type;
 
 		pr_debug("%s: Reporting insertion %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
-		wcd_mbhc_jack_report(mbhc, &mbhc->headset_jack,
-				    (mbhc->hph_status | SND_JACK_MECHANICAL),
-				    WCD_MBHC_JACK_MASK);
+/* SH_AUDIO_DRIVER -> */ /* B-023 */
+#ifdef CONFIG_SH_AUDIO_DRIVER
+		if(flg_dtv_antenna == true){
+			pr_debug("    but only dtv_antenna isn't reported insertion as LINEOUT\n");
+			wcd_mbhc_jack_report(mbhc, &mbhc->headset_jack,
+					(SND_JACK_UNSUPPORTED | SND_JACK_MECHANICAL),
+					WCD_MBHC_JACK_MASK);
+		}else{
+			wcd_mbhc_jack_report(mbhc, &mbhc->headset_jack,
+					(mbhc->hph_status | SND_JACK_MECHANICAL),
+					WCD_MBHC_JACK_MASK);
+		}
+#endif		
+/* SH_AUDIO_DRIVER <- */ /* B-023 */
 		wcd_mbhc_clr_and_turnon_hph_padac(mbhc);
 	}
 	pr_debug("%s: leave hph_status %x\n", __func__, mbhc->hph_status);
@@ -1164,8 +1189,15 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	int rc, spl_hs_count = 0;
 	int cross_conn;
 	int try = 0;
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-080 */
+	int headphone_reported = 0;
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-080 */
 
 	pr_debug("%s: enter\n", __func__);
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-080 */
+	msleep(200);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-080 */
 
 	mbhc = container_of(work, struct wcd_mbhc, correct_plug_swch);
 	codec = mbhc->codec;
@@ -1225,6 +1257,7 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 		goto correct_plug_type;
 	}
 
+#ifndef CONFIG_SH_AUDIO_DRIVER /* 21-080 */
 	if ((plug_type == MBHC_PLUG_TYPE_HEADSET ||
 	     plug_type == MBHC_PLUG_TYPE_HEADPHONE) &&
 	    (!wcd_swch_level_remove(mbhc))) {
@@ -1232,6 +1265,14 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 		wcd_mbhc_find_plug_and_report(mbhc, plug_type);
 		WCD_MBHC_RSC_UNLOCK(mbhc);
 	}
+#else
+	if (plug_type == MBHC_PLUG_TYPE_HEADSET &&
+	    (!wcd_swch_level_remove(mbhc))) {
+		WCD_MBHC_RSC_LOCK(mbhc);
+		wcd_mbhc_find_plug_and_report(mbhc, plug_type);
+		WCD_MBHC_RSC_UNLOCK(mbhc);
+	}
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-080 */
 
 correct_plug_type:
 
@@ -1384,6 +1425,18 @@ correct_plug_type:
 			}
 			wrk_complete = false;
 		}
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-080 */
+		if (!wrk_complete && mbhc->btn_press_intr) {
+			if(headphone_reported == 0){
+				plug_type = MBHC_PLUG_TYPE_HEADPHONE;
+				WCD_MBHC_RSC_LOCK(mbhc);
+				wcd_mbhc_find_plug_and_report(mbhc, plug_type);
+				WCD_MBHC_RSC_UNLOCK(mbhc);
+				headphone_reported++;
+			}
+		}
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-080 */
 	}
 	if (!wrk_complete && mbhc->btn_press_intr) {
 		pr_debug("%s: Can be slow insertion of headphone\n", __func__);
@@ -1651,6 +1704,9 @@ static int wcd_mbhc_get_button_mask(struct wcd_mbhc *mbhc)
 
 	btn = mbhc->mbhc_cb->map_btn_code_to_num(mbhc->codec);
 
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-004 */
+	btn = 0;
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-004 */
 	switch (btn) {
 	case 0:
 		mask = SND_JACK_BTN_0;
@@ -1781,6 +1837,14 @@ static irqreturn_t wcd_mbhc_hs_rem_irq(int irq, void *data)
 
 	timeout = jiffies +
 		  msecs_to_jiffies(WCD_FAKE_REMOVAL_MIN_PERIOD_MS);
+/* SH_AUDIO_DRIVER -> */ /* A-003 */
+#ifdef CONFIG_SH_AUDIO_DRIVER
+	if (timeout < button_timing) {
+		timeout = button_timing;
+		button_timing = 0;
+	}
+#endif /* CONFIG_SH_AUDIO_DRIVER */
+/* SH_AUDIO_DRIVER <- */ /* A-003 */
 	do {
 		retry++;
 		/*
@@ -1936,6 +2000,11 @@ static irqreturn_t wcd_mbhc_btn_press_handler(int irq, void *data)
 	complete(&mbhc->btn_press_compl);
 	WCD_MBHC_RSC_LOCK(mbhc);
 	wcd_cancel_btn_work(mbhc);
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-080 */
+	msleep(150);
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-080 */
+
 	if (wcd_swch_level_remove(mbhc)) {
 		pr_debug("%s: Switch level is low ", __func__);
 		goto done;
@@ -2026,6 +2095,11 @@ static irqreturn_t wcd_mbhc_release_handler(int irq, void *data)
 						     mbhc->buttons_pressed);
 				pr_debug("%s: Reporting btn release\n",
 					 __func__);
+/* SH_AUDIO_DRIVER -> */ /* A-003 */
+#ifdef CONFIG_SH_AUDIO_DRIVER
+				button_timing = jiffies + msecs_to_jiffies(BUTTON_TIMING_DELAY_FOR_APPLE);
+#endif /* CONFIG_SH_AUDIO_DRIVER */
+/* SH_AUDIO_DRIVER <- */ /* A-003 */
 				wcd_mbhc_jack_report(mbhc,
 						&mbhc->button_jack,
 						0, mbhc->buttons_pressed);

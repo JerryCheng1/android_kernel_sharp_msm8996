@@ -242,7 +242,13 @@ int avcs_core_disable_power_collapse(int enable)
 	mutex_lock(&avtimer.avtimer_lock);
 	if (enable) {
 		if (avtimer.avtimer_open_cnt) {
+/* SH_AUDIO_DRIVER-> */ /*21-028*/
+#ifndef CONFIG_SH_AUDIO_DRIVER
 			avtimer.avtimer_open_cnt++;
+#else
+			avtimer.avtimer_open_cnt = 1;
+#endif
+/* SH_AUDIO_DRIVER<- */ /*21-028*/
 			pr_debug("%s: opened avtimer open count=%d\n",
 				__func__, avtimer.avtimer_open_cnt);
 			rc = 0;
@@ -250,12 +256,24 @@ int avcs_core_disable_power_collapse(int enable)
 		}
 		rc = avcs_core_enable_avtimer("timer");
 		if (!rc) {
+/* SH_AUDIO_DRIVER-> */ /*21-028*/
+#ifndef CONFIG_SH_AUDIO_DRIVER
 			avtimer.avtimer_open_cnt++;
+#else
+			avtimer.avtimer_open_cnt = 1;
+#endif
+/* SH_AUDIO_DRIVER<- */ /*21-028*/
 			atomic_set(&avtimer.adsp_ready, 1);
 		}
 	} else {
 		if (avtimer.avtimer_open_cnt > 0) {
+/* SH_AUDIO_DRIVER-> */ /*21-028*/
+#ifndef CONFIG_SH_AUDIO_DRIVER
 			avtimer.avtimer_open_cnt--;
+#else
+			avtimer.avtimer_open_cnt = 0;
+#endif
+/* SH_AUDIO_DRIVER<- */ /*21-028*/
 			if (!avtimer.avtimer_open_cnt) {
 				rc = avcs_core_disable_avtimer(
 				avtimer.timer_handle);

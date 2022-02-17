@@ -17,7 +17,14 @@
 #include <sound/jack.h>
 #include <sound/apr_audio-v2.h>
 #include <linux/mfd/wcd9xxx/wcd9xxx-slimslave.h>
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-024 */
+#include <linux/cpufreq.h>
+#include <linux/notifier.h>
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-024 */
 #include "wcd-mbhc-v2.h"
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-024 */
+extern int msm_routing_get_is_music_play(void);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-024 */
 
 #define TASHA_REG_VAL(reg, val)      {reg, 0, val}
 

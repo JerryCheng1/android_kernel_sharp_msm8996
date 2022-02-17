@@ -163,6 +163,10 @@ enum tasha_sido_voltage {
 
 static enum codec_variant codec_ver;
 
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-082 */
+static int skip_micb_disable = 0;
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-082 */
+
 static int dig_core_collapse_enable = 1;
 module_param(dig_core_collapse_enable, int,
 		S_IRUGO | S_IWUSR | S_IWGRP);
@@ -356,6 +360,17 @@ enum {
 	ANC_MIC_AMIC5,
 	ANC_MIC_AMIC6,
 };
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-005 */
+#define	DIAG_DEBUGMODE_MSK		0x01
+#define	DIAG_DEBUGMODE_OFF		0x00
+#define	DIAG_MICBIAS_MSK		0x02
+#define	DIAG_MICBIAS_ON			0x02
+#define	DIAG_MICBIAS_OFF		0x00
+#define	DIAG_CODECSTOP_MSK		0x04
+#define	DIAG_CODECSTOP_ON		0x04
+#define	DIAG_CODECSTOP_OFF		0x00
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-005 */
 
 enum {
 	AIF1_PB = 0,
@@ -1443,6 +1458,15 @@ static int tasha_micbias_control(struct snd_soc_codec *codec,
 					post_dapm_on, &tasha->mbhc);
 		break;
 	case MICB_DISABLE:
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-082 */
+		if(tasha->micb_ref[micb_index] == 0){
+			skip_micb_disable = 1;
+			pr_debug(" %s  micb_ref=%d, skip MICB_DISABLE \n", __func__, tasha->micb_ref[micb_index]);
+			break;
+		}
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-082 */
+
 		if (tasha->micb_ref[micb_index] > 0)
 			tasha->micb_ref[micb_index]--;
 		if ((tasha->micb_ref[micb_index] == 0) &&
@@ -1491,6 +1515,15 @@ static int tasha_mbhc_request_micbias(struct snd_soc_codec *codec,
 	 * Release vote for mclk while requesting for
 	 * micbias disable
 	 */
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-082 */
+	if(skip_micb_disable == 1){
+		pr_debug(" %s  skip mclk disable\n", __func__);
+		skip_micb_disable = 0;
+		return ret;
+	}
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-082 */
+
 	if (req == MICB_DISABLE)
 		tasha_cdc_mclk_enable(codec, false, false);
 
@@ -2004,6 +2037,58 @@ static void tasha_mbhc_hph_pull_down_ctrl(struct snd_soc_codec *codec,
 	}
 }
 
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-005 */
+struct tasha_priv *diag_codec_switch;
+static int bias_mode_for_testmode = 0;
+static bool irq_mode_for_testmode  = true;
+
+int diag_codec_get_bias_mode(void)
+{
+	return bias_mode_for_testmode;
+}
+EXPORT_SYMBOL_GPL(diag_codec_get_bias_mode);
+
+void diag_codec_set_bias_mode(int mode)
+{
+	struct wcd_mbhc mbhc = diag_codec_switch->mbhc;
+	bias_mode_for_testmode = mode;
+
+	if(irq_mode_for_testmode){
+		if((bias_mode_for_testmode & DIAG_CODECSTOP_MSK) == DIAG_CODECSTOP_ON ){
+            tasha_mbhc_irq_control(mbhc.codec, mbhc.intr_ids->mbhc_sw_intr, false);
+            tasha_mbhc_irq_control(mbhc.codec, mbhc.intr_ids->mbhc_hs_rem_intr, false);
+            tasha_mbhc_irq_control(mbhc.codec, mbhc.intr_ids->mbhc_hs_ins_intr, false);
+			irq_mode_for_testmode = false;
+		}
+	}else{
+		if((bias_mode_for_testmode & DIAG_CODECSTOP_MSK) == DIAG_CODECSTOP_OFF){
+            tasha_mbhc_irq_control(mbhc.codec, mbhc.intr_ids->mbhc_sw_intr, true);
+            tasha_mbhc_irq_control(mbhc.codec, mbhc.intr_ids->mbhc_hs_rem_intr, true);
+            tasha_mbhc_irq_control(mbhc.codec, mbhc.intr_ids->mbhc_hs_ins_intr, true);
+			irq_mode_for_testmode = true;
+		}
+	}
+	return;
+}
+EXPORT_SYMBOL_GPL(diag_codec_set_bias_mode);
+
+int msm_headset_hp_state(void)
+{
+	struct wcd_mbhc mbhc = diag_codec_switch->mbhc;
+
+	return mbhc.headset_jack.status;
+}
+EXPORT_SYMBOL_GPL(msm_headset_hp_state);
+
+int msm_headset_bu_state(void)
+{
+	struct wcd_mbhc mbhc = diag_codec_switch->mbhc;
+
+	return mbhc.button_jack.status;
+}
+EXPORT_SYMBOL_GPL(msm_headset_bu_state);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-005 */
+
 static const struct wcd_mbhc_cb mbhc_cb = {
 	.request_irq = tasha_mbhc_request_irq,
 	.irq_control = tasha_mbhc_irq_control,
@@ -2211,6 +2296,32 @@ static int tasha_get_hph_type(struct snd_kcontrol *kcontrol,
 
 	return 0;
 }
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-023 */
+static int sh_get_music_type_cb(struct notifier_block *nb, unsigned long event, void *data)
+{
+	int music_type = 0;
+	struct sh_cpufreq_adjust_param *param = data;
+
+	switch (event) {
+	case SH_CPUFREQ_PERIOD:
+		music_type = msm_routing_get_is_music_play();
+		if (music_type >= 0)
+			param->music_type = music_type;
+		else
+			return NOTIFY_BAD;
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block sh_get_music_type_nb = {
+	.notifier_call = sh_get_music_type_cb,
+};
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-023 */
 
 static const struct snd_kcontrol_new hph_type_detect_controls[] = {
 	SOC_SINGLE_EXT("HPH Type", 0, 0, UINT_MAX, 0,
@@ -5870,11 +5981,17 @@ static int tasha_codec_enable_dec(struct snd_soc_dapm_widget *w,
 
 	tx_vol_ctl_reg = WCD9335_CDC_TX0_TX_PATH_CTL + 16 * decimator;
 	hpf_gate_reg = WCD9335_CDC_TX0_TX_PATH_SEC2 + 16 * decimator;
+#ifndef CONFIG_SH_AUDIO_DRIVER /* 21-075 */
 	dec_cfg_reg = WCD9335_CDC_TX0_TX_PATH_CFG0 + 16 * decimator;
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-075 */
 	tx_gain_ctl_reg = WCD9335_CDC_TX0_TX_VOL_CTL + 16 * decimator;
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-075 */
+		dec_cfg_reg = WCD9335_CDC_TX0_TX_PATH_CFG0 + 16 * decimator;
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-075 */
+
 		amic_n = tasha_codec_find_amic_input(codec, decimator);
 		if (amic_n)
 			pwr_level_reg = tasha_codec_get_amic_pwlvl_reg(codec,
@@ -13941,6 +14058,13 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 	mutex_unlock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-005 */
+	diag_codec_switch = tasha;
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-005 */
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-022 */
+	if (cpufreq_register_notifier(&sh_get_music_type_nb, SH_CPUFREQ_ADJUST_NOTIFIER))
+		pr_err("%s: cannot register cpufreq notifier\n", __func__);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-023 */
 	return ret;
 
 err_pdata:
@@ -13954,6 +14078,11 @@ err:
 static int tasha_codec_remove(struct snd_soc_codec *codec)
 {
 	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-023 */
+	if (cpufreq_unregister_notifier(&sh_get_music_type_nb, SH_CPUFREQ_ADJUST_NOTIFIER))
+		pr_err("%s: cannot unregister cpufreq notifier\n", __func__);
+#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-023 */
 
 	tasha_cleanup_irqs(tasha);
 	/* Cleanup MBHC */

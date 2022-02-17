@@ -35,6 +35,9 @@
 #include <sound/audio_cal_utils.h>
 #include <sound/audio_effects.h>
 #include <sound/hwdep.h>
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-023 */
+#include <linux/spinlock.h>
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-023 */
 
 #include "msm-pcm-routing-v2.h"
 #include "msm-pcm-routing-devdep.h"
@@ -50,6 +53,11 @@ static int get_cal_path(int path_type);
 static struct mutex routing_lock;
 
 static struct cal_type_data *cal_data;
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-024 */
+static int a2dp_mode = 0;
+static DEFINE_SPINLOCK(spinlock);
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-024 */
 
 static int fm_switch_enable;
 static int hfp_switch_enable;
@@ -13587,6 +13595,40 @@ err:
 	msm_routing_delete_cal_data();
 	return ret;
 }
+
+#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-023 *//* 21-024 */
+void msm_routing_set_a2dp_mode(int mode)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&spinlock, flags);
+	a2dp_mode = mode;
+	spin_unlock_irqrestore(&spinlock, flags);
+}
+EXPORT_SYMBOL_GPL(msm_routing_set_a2dp_mode);
+
+int msm_routing_get_is_music_play(void)
+{
+	int music_type = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&spinlock, flags);
+	if (a2dp_mode)
+		music_type |= 1 << 3;
+	if (test_bit(0, &msm_bedais[2].fe_sessions))
+		music_type |= 1 << 0;
+	if (test_bit(4, &msm_bedais[2].fe_sessions))
+		music_type |= 1 << 1;
+	if (test_bit(1, &msm_bedais[2].fe_sessions))
+		music_type |= 1 << 2;
+	if (test_bit(3, &msm_bedais[2].fe_sessions))
+		music_type |= 1 << 4;
+	spin_unlock_irqrestore(&spinlock, flags);
+
+	return music_type;
+}
+EXPORT_SYMBOL_GPL(msm_routing_get_is_music_play);
+#endif /* CONFIG_SH_AUDIO_DRIVER *//* 21-023 *//* 21-024 */
 
 static int __init msm_soc_routing_platform_init(void)
 {
