@@ -2321,6 +2321,7 @@ i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	int	ret;
 	int	cnt;
 	int	retry_cnt = XFER_RETRY;
+	struct i2c_msm_ctrl      *ctrl = i2c_get_adapdata(adap);
 
 	for (cnt=0; cnt<=retry_cnt; cnt++) {
 		ret = i2c_msm_frmwrk_sub_xfer(adap, msgs, num, cnt);

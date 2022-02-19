@@ -1489,6 +1489,7 @@ static int get_prop_batt_capacity(struct smbchg_chip *chip)
 		capacity = DEFAULT_BATT_CAPACITY;
 	}
 
+out:
 	return capacity;
 }
 
@@ -10136,10 +10137,10 @@ static int smbchg_probe(struct spmi_device *spmi)
 
 #ifdef CONFIG_BATTERY_SH
 	the_chip = chip;
-
+#if 0
 	shpwr_dbg_log_init();
 	shpwr_dump_reg_init();
-
+#endif
 	schedule_delayed_work(&chip->usb_present_check_work,
 		msecs_to_jiffies(USB_PRESENT_CHECK_DELAY_MS));
 #endif /* CONFIG_BATTERY_SH */

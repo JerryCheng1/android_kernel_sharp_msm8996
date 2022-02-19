@@ -635,6 +635,7 @@ static void msm_spi_set_mx_counts(struct msm_spi *dd, u32 n_words)
 	 *  - Set the MX_OUTPUT/MX_INPUT_COUNT registers to num xfer bytes.
 	 *  - Set the READ/WRITE_COUNT registers to 0.
 	 */
+#ifndef CONFIG_I2C_CUST_SH
 	if (dd->tx_mode != SPI_BAM_MODE) {
 		if (dd->tx_mode == SPI_FIFO_MODE) {
 			if (n_words <= dd->input_fifo_size)
@@ -655,6 +656,22 @@ static void msm_spi_set_mx_counts(struct msm_spi *dd, u32 n_words)
 			writel_relaxed(0, dd->base + SPI_MX_INPUT_COUNT);
 		} else
 			writel_relaxed(n_words, dd->base + SPI_MX_INPUT_COUNT);
+#else
+	if (dd->rx_mode == SPI_FIFO_MODE) {
+		if (n_words <= dd->input_fifo_size) {
+			writel_relaxed(n_words,
+				       dd->base + SPI_MX_READ_COUNT);
+			msm_spi_set_write_count(dd, n_words);
+		} else {
+			writel_relaxed(0, dd->base + SPI_MX_READ_COUNT);
+			msm_spi_set_write_count(dd, 0);
+		}
+		if (dd->qup_ver == SPI_QUP_VERSION_BFAM) {
+			/* must be zero for FIFO */
+			writel_relaxed(0, dd->base + SPI_MX_INPUT_COUNT);
+			writel_relaxed(0, dd->base + SPI_MX_OUTPUT_COUNT);
+		}
+#endif
 	} else {
 		/* must be zero for BAM and DMOV */
 		writel_relaxed(0, dd->base + SPI_MX_READ_COUNT);
@@ -967,7 +984,6 @@ static inline irqreturn_t msm_spi_qup_irq(int irq, void *dev_id)
 	if (op & SPI_OP_OUTPUT_SERVICE_FLAG) {
 		ret |= msm_spi_output_irq(irq, dev_id);
 	}
-
 	if (dd->tx_mode != SPI_BAM_MODE) {
 		if (!dd->rx_done) {
 			if (dd->rx_bytes_remaining == 0)
@@ -1273,7 +1289,7 @@ static void msm_spi_set_qup_io_modes(struct msm_spi *dd)
 	spi_iom = readl_relaxed(dd->base + SPI_IO_MODES);
 	/* Set input and output transfer mode: FIFO, DMOV, or BAM */
 	spi_iom &= ~(SPI_IO_M_INPUT_MODE | SPI_IO_M_OUTPUT_MODE);
-#ifndef CONFIG_ARCH_PA32
+#ifndef CONFIG_I2C_CUST_SH
 	spi_iom = (spi_iom | (dd->tx_mode << OUTPUT_MODE_SHIFT));
 	spi_iom = (spi_iom | (dd->rx_mode << INPUT_MODE_SHIFT));
 
@@ -1286,10 +1302,10 @@ static void msm_spi_set_qup_io_modes(struct msm_spi *dd)
 		(dd->cur_transfer->bits_per_word <= 32) &&
 		(dd->cur_transfer->bits_per_word % 8 == 0))) {
 #else  /* COORDINATOR SH_Customize BUILDERR MODIFY */
-	spi_iom = (spi_iom | (dd->mode << OUTPUT_MODE_SHIFT));
-	spi_iom = (spi_iom | (dd->mode << INPUT_MODE_SHIFT));
+	spi_iom = (spi_iom | (dd->tx_mode << OUTPUT_MODE_SHIFT));
+	spi_iom = (spi_iom | (dd->rx_mode << INPUT_MODE_SHIFT));
 	/* Turn on packing for data mover */
-	if (dd->mode == SPI_BAM_MODE)
+	if (dd->tx_mode == SPI_BAM_MODE) {
 #endif /* COORDINATOR SH_Customize BUILDERR MODIFY end */
 		spi_iom |= SPI_IO_M_PACK_EN | SPI_IO_M_UNPACK_EN;
 		dd->pack_words = true;

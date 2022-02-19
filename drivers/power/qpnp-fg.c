@@ -2886,7 +2886,6 @@ static void update_current_avg(struct fg_chip *chip)
 	mutex_unlock(&chip->current_ave_lock);
 }
 #endif /* CONFIG_BATTERY_SH */
-}
 
 #define SRAM_TIMEOUT_MS			3000
 static void update_sram_data_work(struct work_struct *work)

@@ -2297,32 +2297,6 @@ static int tasha_get_hph_type(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-023 */
-static int sh_get_music_type_cb(struct notifier_block *nb, unsigned long event, void *data)
-{
-	int music_type = 0;
-	struct sh_cpufreq_adjust_param *param = data;
-
-	switch (event) {
-	case SH_CPUFREQ_PERIOD:
-		music_type = msm_routing_get_is_music_play();
-		if (music_type >= 0)
-			param->music_type = music_type;
-		else
-			return NOTIFY_BAD;
-		break;
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block sh_get_music_type_nb = {
-	.notifier_call = sh_get_music_type_cb,
-};
-#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-023 */
-
 static const struct snd_kcontrol_new hph_type_detect_controls[] = {
 	SOC_SINGLE_EXT("HPH Type", 0, 0, UINT_MAX, 0,
 		       tasha_get_hph_type, NULL),
@@ -14061,10 +14035,6 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 #ifdef CONFIG_SH_AUDIO_DRIVER /* 21-005 */
 	diag_codec_switch = tasha;
 #endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-005 */
-#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-022 */
-	if (cpufreq_register_notifier(&sh_get_music_type_nb, SH_CPUFREQ_ADJUST_NOTIFIER))
-		pr_err("%s: cannot register cpufreq notifier\n", __func__);
-#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-023 */
 	return ret;
 
 err_pdata:
@@ -14079,10 +14049,6 @@ static int tasha_codec_remove(struct snd_soc_codec *codec)
 {
 	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
 
-#ifdef CONFIG_SH_AUDIO_DRIVER /* 21-023 */
-	if (cpufreq_unregister_notifier(&sh_get_music_type_nb, SH_CPUFREQ_ADJUST_NOTIFIER))
-		pr_err("%s: cannot unregister cpufreq notifier\n", __func__);
-#endif /* CONFIG_SH_AUDIO_DRIVER */ /* 21-023 */
 
 	tasha_cleanup_irqs(tasha);
 	/* Cleanup MBHC */

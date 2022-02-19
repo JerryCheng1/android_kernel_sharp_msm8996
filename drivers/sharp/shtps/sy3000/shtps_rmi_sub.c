@@ -448,7 +448,7 @@ static void shtps_perflock_cluster0_enable(struct shtps_rmi_spi *ts)
 				}
 			}
 		}
-		sh_cpufreq_update_policy_try();
+		/* sh_cpufreq_update_policy_try(); */
 		SHTPS_LOG_DBG_PRINT("perf_lock <cluster0> start\n");
 	}
 
@@ -474,7 +474,7 @@ static void shtps_perflock_cluster0_disable(struct shtps_rmi_spi *ts)
 				per_cpu(perflock_freq, cpu) = 0;
 			}
 		}
-		sh_cpufreq_update_policy_try();
+		/* sh_cpufreq_update_policy_try(); */
 		ts->cpu_clock_ctrl_p->perf_lock_cluster0_state = 0;
 		SHTPS_LOG_DBG_PRINT("perf_lock <cluster0> end\n");
 	}
@@ -539,7 +539,7 @@ static void shtps_perflock_cluster1_enable(struct shtps_rmi_spi *ts)
 				}
 			}
 		}
-		sh_cpufreq_update_policy_try();
+		/* sh_cpufreq_update_policy_try(); */
 		SHTPS_LOG_DBG_PRINT("perf_lock <cluster1> start\n");
 	}
 
@@ -565,7 +565,7 @@ static void shtps_perflock_cluster1_disable(struct shtps_rmi_spi *ts)
 				per_cpu(perflock_freq, cpu) = 0;
 			}
 		}
-		sh_cpufreq_update_policy_try();
+		/* sh_cpufreq_update_policy_try(); */
 		ts->cpu_clock_ctrl_p->perf_lock_cluster1_state = 0;
 		SHTPS_LOG_DBG_PRINT("perf_lock <cluster1> end\n");
 	}
