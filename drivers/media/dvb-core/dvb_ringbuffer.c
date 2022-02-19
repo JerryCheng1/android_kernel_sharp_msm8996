@@ -217,7 +217,10 @@ ssize_t dvb_ringbuffer_write_user(struct dvb_ringbuffer *rbuf,
 {
 	size_t todo = len;
 	size_t split;
+#ifdef CONFIG_DTV_TUNERDEV_TMM
+	int status;
 	ssize_t oldpwrite = rbuf->pwrite;
+#endif
 
 	split = (rbuf->pwrite + len > rbuf->size) ?
 			rbuf->size - rbuf->pwrite :

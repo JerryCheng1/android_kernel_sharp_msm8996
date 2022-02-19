@@ -1556,6 +1556,9 @@ static void sdhci_set_power(struct sdhci_host *host, unsigned char mode,
  * MMC callbacks                                                             *
  *                                                                           *
 \*****************************************************************************/
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+extern bool sh_mmc_pending_resume;
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 
 static int sdhci_enable(struct mmc_host *mmc)
 {
@@ -1563,6 +1566,14 @@ static int sdhci_enable(struct mmc_host *mmc)
 
 	if (host->ops->platform_bus_voting)
 		host->ops->platform_bus_voting(host, 1);
+
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+	if (strncmp(mmc_hostname(mmc), HOST_MMC_SD, sizeof(HOST_MMC_SD)) == 0)
+		if (sh_mmc_pending_resume == true) {
+			sh_mmc_pending_resume = false;
+			mmc->bus_ops->resume_pending(mmc);
+		}
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 
 	return 0;
 }
@@ -1823,7 +1834,14 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				host->mrq = NULL;
 				host->flags &= ~SDHCI_NEEDS_RETUNING;
 				spin_unlock_irqrestore(&host->lock, flags);
+#ifdef CONFIG_MMC_BUG_FIX_CUST_SH
+				if (mmc_card_strobe(mmc->card))
+					sdhci_enhanced_strobe(mmc);
+				else
+					sdhci_execute_tuning(mmc, tuning_opcode);
+#else /* CONFIG_MMC_BUG_FIX_CUST_SH */
 				sdhci_execute_tuning(mmc, tuning_opcode);
+#endif /* CONFIG_MMC_BUG_FIX_CUST_SH */
 				spin_lock_irqsave(&host->lock, flags);
 
 				/* Restore original mmc_request structure */
@@ -3861,6 +3879,12 @@ int sdhci_add_host(struct sdhci_host *host)
 		caps[1] = (host->quirks & SDHCI_QUIRK_MISSING_CAPS) ?
 			host->caps1 :
 			sdhci_readl(host, SDHCI_CAPABILITIES_1);
+
+#ifdef CONFIG_MMC_SD_ENABLE_ONLY_DDR50_CUST_SH
+	if (!strcmp(mmc_hostname(mmc), HOST_MMC_SD))
+		caps[1] &= ~(SDHCI_SUPPORT_SDR104 | SDHCI_SUPPORT_SDR50 |
+						SDHCI_USE_SDR50_TUNING);
+#endif /* CONFIG_MMC_SD_ENABLE_ONLY_DDR50_CUST_SH */
 
 	if (host->quirks & SDHCI_QUIRK_FORCE_DMA)
 		host->flags |= SDHCI_USE_SDMA;

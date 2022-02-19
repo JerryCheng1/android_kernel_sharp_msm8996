@@ -186,6 +186,10 @@
 #define SDHCI_MSM_MAX_SEGMENTS  (1 << 9)
 #define SDHCI_MSM_MMC_CLK_GATE_DELAY	200 /* msecs */
 
+#ifdef CONFIG_CLKGATE_TIME_EMMC_CUST_SH
+#define SDHCI_MSM_MMC_CLK_GATE_DELAY_FOR_EMMC	100 /* msecs */
+#endif /* CONFIG_CLKGATE_TIME_EMMC_CUST_SH */
+
 #define CORE_FREQ_100MHZ	(100 * 1000 * 1000)
 #define TCXO_FREQ		19200000
 
@@ -238,6 +242,15 @@ enum vdd_io_level {
 	 */
 	VDD_IO_SET_LEVEL,
 };
+
+#ifdef CONFIG_MMC_SD_CUST_SH
+extern int64_t sh_mmc_timer_get_sclk_time(void);
+#define SDVDD_ON_TIME_MIN	20
+static int64_t timer_start = 0;
+static int64_t timer_end   = 0;
+static unsigned int sdhci_msm_gpio_flg = 0;
+static int sdpwr_en = 0;
+#endif /* CONFIG_MMC_SD_CUST_SH */
 
 /* MSM platform specific tuning */
 static inline int msm_dll_poll_ck_out_en(struct sdhci_host *host,
@@ -1302,6 +1315,17 @@ static int sdhci_msm_dt_parse_vreg_info(struct device *dev,
 	char prop_name[MAX_PROP_SIZE];
 	struct sdhci_msm_reg_data *vreg;
 	struct device_node *np = dev->of_node;
+#ifdef CONFIG_MMC_SD_CUST_SH
+	struct sdhci_host *host = dev_get_drvdata(dev);
+#endif /*CONFIG_MMC_SD_CUST_SH */
+
+#ifdef CONFIG_MMC_SD_CUST_SH
+	if (!strcmp(mmc_hostname(host->mmc),HOST_MMC_SD)) {
+		if (vreg_name && !strcmp(vreg_name, "vdd")) {
+			return 0;
+		}
+	}
+#endif /* CONFIG_MMC_SD_CUST_SH */
 
 	snprintf(prop_name, MAX_PROP_SIZE, "%s-supply", vreg_name);
 	if (!of_parse_phandle(np, prop_name, 0)) {
@@ -1654,6 +1678,9 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	u32 *ice_clk_table = NULL;
 	enum of_gpio_flags flags = OF_GPIO_ACTIVE_LOW;
 	const char *lower_bus_speed = NULL;
+#ifdef CONFIG_MMC_SD_CUST_SH
+	struct sdhci_host *host = dev_get_drvdata(dev);
+#endif /* CONFIG_MMC_SD_CUST_SH */
 
 	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata) {
@@ -1755,6 +1782,16 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 		dev_err(dev, "failed parsing gpio data\n");
 		goto out;
 	}
+
+#ifdef CONFIG_MMC_SD_CUST_SH
+	if (!strcmp(mmc_hostname(host->mmc),HOST_MMC_SD)) {
+		sdpwr_en = of_get_named_gpio(np, "sdpwr-gpio", 0);
+		if (!gpio_is_valid(sdpwr_en)) {
+			dev_err(dev, "sdpwr-gpio resource error\n");
+			sdpwr_en = 0;
+		}
+	}
+#endif /* CONFIG_MMC_SD_CUST_SH */
 
 	len = of_property_count_strings(np, "qcom,bus-speed-mode");
 
@@ -2325,6 +2362,49 @@ static irqreturn_t sdhci_msm_sdiowakeup_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_MMC_SD_CUST_SH
+static void
+sdhci_msm_set_enpwr_gpio(struct sdhci_host *host, bool enable)
+{
+	int rc;
+
+	if(strcmp(mmc_hostname(host->mmc),HOST_MMC_SD))
+		return;
+
+	if (!sdpwr_en)
+		return;
+
+	if (enable) {
+		timer_end = sh_mmc_timer_get_sclk_time();
+		if (SDVDD_ON_TIME_MIN > ((timer_end - timer_start) / 1000000))
+			msleep(SDVDD_ON_TIME_MIN);
+
+		rc = gpio_request(sdpwr_en, "sdpwr_en_gpio");
+		if (rc) {
+			pr_err("request for sdpwr_en_gpio failed, rc=%d\n", rc);
+		} else {
+			gpio_set_value_cansleep(sdpwr_en, enable);
+			gpio_free(sdpwr_en);
+			sdhci_msm_gpio_flg = 1;
+		}
+	} else {
+		rc = gpio_request(sdpwr_en, "sdpwr_en_gpio");
+		if (rc) {
+			pr_err("request for sdpwr_en_gpio failed, rc=%d\n", rc);
+		} else {
+			gpio_set_value_cansleep(sdpwr_en, enable);
+			gpio_free(sdpwr_en);
+			sdhci_msm_gpio_flg = 0;
+		}
+		timer_start = sh_mmc_timer_get_sclk_time();
+		msleep(10);
+	}
+
+	pr_debug("%s: set sd vdd power(%d)\n",
+			mmc_hostname(host->mmc), enable);
+}
+#endif /* CONFIG_MMC_SD_CUST_SH */
+
 void sdhci_msm_dump_pwr_ctrl_regs(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -2388,6 +2468,12 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 
 	/* Handle BUS ON/OFF*/
 	if (irq_status & CORE_PWRCTL_BUS_ON) {
+#ifdef CONFIG_MMC_SD_CUST_SH
+		if (!strcmp(mmc_hostname(host->mmc),HOST_MMC_SD)) {
+			if(!sdhci_msm_gpio_flg && (mmc_gpio_get_cd(msm_host->mmc) == 1))
+				sdhci_msm_set_enpwr_gpio(host, true);
+		}
+#endif /* CONFIG_MMC_SD_CUST_SH */
 		ret = sdhci_msm_setup_vreg(msm_host->pdata, true, false);
 		if (!ret) {
 			ret = sdhci_msm_setup_pins(msm_host->pdata, true);
@@ -2407,6 +2493,12 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 			ret = sdhci_msm_setup_vreg(msm_host->pdata,
 					false, false);
 		if (!ret) {
+#ifdef CONFIG_MMC_SD_CUST_SH
+			if (!strcmp(mmc_hostname(host->mmc),HOST_MMC_SD)) {
+				if(sdhci_msm_gpio_flg)
+					sdhci_msm_set_enpwr_gpio(host, false);
+			}
+#endif /* CONFIG_MMC_SD_CUST_SH */
 			ret = sdhci_msm_setup_pins(msm_host->pdata, false);
 			ret |= sdhci_msm_set_vdd_io_vol(msm_host->pdata,
 					VDD_IO_LOW, 0);
@@ -4265,7 +4357,14 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	writel_relaxed(INT_MASK, (msm_host->core_mem + CORE_PWRCTL_MASK));
 
 	/* Set clock gating delay to be used when CONFIG_MMC_CLKGATE is set */
+#ifdef CONFIG_CLKGATE_TIME_EMMC_CUST_SH
+	if (!strncmp(mmc_hostname(host->mmc), HOST_MMC_MMC, sizeof(HOST_MMC_MMC)))
+		msm_host->mmc->clkgate_delay = SDHCI_MSM_MMC_CLK_GATE_DELAY_FOR_EMMC;
+	else
+		msm_host->mmc->clkgate_delay = SDHCI_MSM_MMC_CLK_GATE_DELAY;
+#else /* CONFIG_CLKGATE_TIME_EMMC_CUST_SH */
 	msm_host->mmc->clkgate_delay = SDHCI_MSM_MMC_CLK_GATE_DELAY;
+#endif /* CONFIG_CLKGATE_TIME_EMMC_CUST_SH */
 
 	/* Set host capabilities */
 	msm_host->mmc->caps |= msm_host->pdata->mmc_bus_width;
@@ -4275,7 +4374,17 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= msm_host->pdata->caps2;
 	msm_host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 	msm_host->mmc->caps2 |= MMC_CAP2_HS400_POST_TUNING;
+#ifdef CONFIG_MMC_BUG_FIX_CUST_SH
+	if (strncmp(mmc_hostname(host->mmc), HOST_MMC_MMC,
+			sizeof(HOST_MMC_MMC)) != 0)
+		msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
+#else  /* CONFIG_MMC_BUG_FIX_CUST_SH */
 	msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
+#endif /* CONFIG_MMC_BUG_FIX_CUST_SH */
+#ifdef CONFIG_MMC_SD_DISABLE_CLK_SCALE_CUST_SH
+	if (!strncmp(mmc_hostname(host->mmc), HOST_MMC_SD, sizeof(HOST_MMC_SD)))
+		msm_host->mmc->caps2 &= ~MMC_CAP2_CLK_SCALE;
+#endif /* CONFIG_MMC_SD_DISABLE_CLK_SCALE_CUST_SH */
 	msm_host->mmc->caps2 |= MMC_CAP2_SANITIZE;
 	msm_host->mmc->caps2 |= MMC_CAP2_MAX_DISCARD_SIZE;
 	msm_host->mmc->caps2 |= MMC_CAP2_SLEEP_AWAKE;

@@ -427,6 +427,12 @@ static void msm_spi_calculate_fifo_size(struct msm_spi *dd)
 		}
 	}
 
+#if defined( CONFIG_SPI_DMA_THRESHOLD_SH )
+	if (dd->pdata->use_bam && !dd->pdata->dma_threshold) {
+		dd->pdata->dma_threshold = 3*dd->input_block_size;
+	}
+#endif	/* CONFIG_SPI_DMA_THRESHOLD_SH */
+
 	return;
 
 fifo_size_err:
@@ -936,6 +942,9 @@ static inline irqreturn_t msm_spi_qup_irq(int irq, void *dev_id)
 
 	if (pm_runtime_suspended(dd->dev)) {
 		dev_warn(dd->dev, "QUP: pm runtime suspend, irq:%d\n", irq);
+#if defined(CONFIG_SPI_IRQ_SUSPENDED_SH)
+		if (dd->suspended)
+#endif	/* defined(CONFIG_SPI_IRQ_SUSPENDED_SH) */
 		return ret;
 	}
 	if (readl_relaxed(dd->base + SPI_ERROR_FLAGS) ||
@@ -1200,14 +1209,23 @@ msm_spi_use_dma(struct msm_spi *dd, struct spi_transfer *tr, u8 bpw)
 	if ((dd->qup_ver == SPI_QUP_VERSION_BFAM) && !dd->pdata->use_bam)
 		return false;
 
+#if !defined( CONFIG_SPI_DMA_THRESHOLD_SH )
 	if (dd->cur_msg_len < 3*dd->input_block_size)
 		return false;
+#else	/* CONFIG_SPI_DMA_THRESHOLD_SH */
+	if (dd->cur_msg_len < dd->pdata->dma_threshold)
+		return false;
+#endif	/* CONFIG_SPI_DMA_THRESHOLD_SH */
 
 	if ((dd->qup_ver != SPI_QUP_VERSION_BFAM) &&
 		 !dd->read_len && !dd->write_len)
 		return false;
 
+#if !defined( CONFIG_SPI_DMA_ALIGNMENT_CHECK_SH )
 	if (dd->qup_ver == SPI_QUP_VERSION_NONE) {
+#else	/* CONFIG_SPI_DMA_ALIGNMENT_CHECK_SH */
+	{
+#endif	/* CONFIG_SPI_DMA_ALIGNMENT_CHECK_SH */
 		u32 cache_line = dma_get_cache_alignment();
 
 		if (tr->tx_buf) {
@@ -1255,6 +1273,7 @@ static void msm_spi_set_qup_io_modes(struct msm_spi *dd)
 	spi_iom = readl_relaxed(dd->base + SPI_IO_MODES);
 	/* Set input and output transfer mode: FIFO, DMOV, or BAM */
 	spi_iom &= ~(SPI_IO_M_INPUT_MODE | SPI_IO_M_OUTPUT_MODE);
+#ifndef CONFIG_ARCH_PA32
 	spi_iom = (spi_iom | (dd->tx_mode << OUTPUT_MODE_SHIFT));
 	spi_iom = (spi_iom | (dd->rx_mode << INPUT_MODE_SHIFT));
 
@@ -1266,6 +1285,12 @@ static void msm_spi_set_qup_io_modes(struct msm_spi *dd)
 		(dd->cur_transfer->bits_per_word) &&
 		(dd->cur_transfer->bits_per_word <= 32) &&
 		(dd->cur_transfer->bits_per_word % 8 == 0))) {
+#else  /* COORDINATOR SH_Customize BUILDERR MODIFY */
+	spi_iom = (spi_iom | (dd->mode << OUTPUT_MODE_SHIFT));
+	spi_iom = (spi_iom | (dd->mode << INPUT_MODE_SHIFT));
+	/* Turn on packing for data mover */
+	if (dd->mode == SPI_BAM_MODE)
+#endif /* COORDINATOR SH_Customize BUILDERR MODIFY end */
 		spi_iom |= SPI_IO_M_PACK_EN | SPI_IO_M_UNPACK_EN;
 		dd->pack_words = true;
 	} else {
@@ -1307,7 +1332,9 @@ static u32 msm_spi_set_spi_io_control(struct msm_spi *dd)
 	chip_select = dd->spi->chip_select << 2;
 	if ((spi_ioc & SPI_IO_C_CS_SELECT) != chip_select)
 		spi_ioc = (spi_ioc & ~SPI_IO_C_CS_SELECT) | chip_select;
+#if !defined(CONFIG_SPI_CS_CHANGE_SH)
 	if (!dd->cur_transfer->cs_change)
+#endif	/* !defined(CONFIG_SPI_CS_CHANGE_SH) */
 		spi_ioc |= SPI_IO_C_MX_CS_MODE;
 
 	if (spi_ioc != spi_ioc_orig)
@@ -1360,6 +1387,10 @@ static int msm_spi_process_transfer(struct msm_spi *dd)
 	u32 int_loopback = 0;
 	int ret;
 	int status = 0;
+#if defined( CONFIG_SPI_DEASSERT_WAIT_SH )
+	u32 deassert_wait = 0;
+#endif	/* CONFIG_SPI_DEASSERT_WAIT_SH */
+
 
 	get_transfer_length(dd);
 	dd->cur_tx_transfer = dd->cur_transfer;
@@ -1416,6 +1447,14 @@ static int msm_spi_process_transfer(struct msm_spi *dd)
 	msm_spi_set_qup_config(dd, bpw);
 	spi_ioc = msm_spi_set_spi_io_control(dd);
 	msm_spi_set_qup_op_mask(dd);
+
+#if defined( CONFIG_SPI_DEASSERT_WAIT_SH )
+	deassert_wait = dd->cur_transfer->deassert_wait * (max_speed / 1000) / 1000;
+	if (deassert_wait > 63) {
+		deassert_wait = 63;
+	}
+	writel_relaxed(deassert_wait, dd->base + SPI_DEASSERT_WAIT);
+#endif	/* CONFIG_SPI_DEASSERT_WAIT_SH */
 
 	/* The output fifo interrupt handler will handle all writes after
 	   the first. Restricting this to one write avoids contention
@@ -1719,10 +1758,20 @@ static int msm_spi_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct msm_spi	*dd = spi_master_get_devdata(master);
 	int resume_state = 0;
+#if defined(CONFIG_SPI_CUST2_SH)
+	int result_val = 0;
+#endif /* CONFIG_SPI_CUST2_SH */
 
 	resume_state = pm_runtime_get_sync(dd->dev);
+#if defined(CONFIG_SPI_CUST2_SH)
+	if (resume_state < 0){
+		dev_err(dd->dev,"%s: pm_runtime_get_sync return=%d \n", __func__, resume_state);
+		result_val = resume_state;
+	}
+#else /* CONFIG_SPI_CUST2_SH */
 	if (resume_state < 0)
 		goto spi_finalize;
+#endif /* CONFIG_SPI_CUST2_SH */
 
 	/*
 	 * Counter-part of system-suspend when runtime-pm is not enabled.
@@ -1731,12 +1780,25 @@ static int msm_spi_prepare_transfer_hardware(struct spi_master *master)
 	 */
 	if (!pm_runtime_enabled(dd->dev))
 		resume_state = msm_spi_pm_resume_runtime(dd->dev);
+#if defined(CONFIG_SPI_CUST2_SH)
+	if (resume_state < 0){
+		dev_err(dd->dev,"%s: msm_spi_pm_resume_runtime return=%d \n", __func__, resume_state);
+		result_val = resume_state;
+		goto spi_finalize;
+	}
+	if (dd->suspended){
+		dev_err(dd->dev,"%s: suspended Next..\n", __func__);
+		result_val = resume_state;
+		goto spi_finalize;
+	}
+#else /* CONFIG_SPI_CUST2_SH */
 	if (resume_state < 0)
 		goto spi_finalize;
 	if (dd->suspended) {
 		resume_state = -EBUSY;
 		goto spi_finalize;
 	}
+#endif /* CONFIG_SPI_CUST2_SH */
 	return 0;
 
 spi_finalize:
@@ -2248,6 +2310,14 @@ struct msm_spi_platform_data *msm_spi_dt_to_pdata(
 			&pdata->rt_priority,		 DT_OPT,  DT_BOOL,  0},
 		{"qcom,shared",
 			&pdata->is_shared,		 DT_OPT,  DT_BOOL,  0},
+#if defined( CONFIG_SPI_DMA_THRESHOLD_SH )
+		{"spi-dma-threshold-sh",
+			&pdata->dma_threshold,           DT_OPT,  DT_U32,  0},
+#endif	/* CONFIG_SPI_DMA_THRESHOLD_SH */
+#if defined( CONFIG_SPI_AUTO_SUSPEND_SH )
+		{"spi-autosuspend-delay-time-sh",
+			&pdata->autosuspend_delay,       DT_OPT,  DT_U32,  CONFIG_SPI_AUTO_SUSPEND_SH},
+#endif	/* CONFIG_SPI_AUTO_SUSPEND_SH */
 		{NULL,  NULL,                            0,       0,        0},
 		};
 
@@ -2570,7 +2640,12 @@ skip_dma_resources:
 		goto err_probe_reqmem;
 	}
 
+#if defined( CONFIG_SPI_AUTO_SUSPEND_SH )
+	pm_runtime_set_autosuspend_delay(&pdev->dev, dd->pdata->autosuspend_delay);
+#else	/* CONFIG_SPI_AUTO_SUSPEND_SH */
 	pm_runtime_set_autosuspend_delay(&pdev->dev, MSEC_PER_SEC);
+#endif	/* CONFIG_SPI_AUTO_SUSPEND_SH */
+
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 

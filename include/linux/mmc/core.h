@@ -117,6 +117,9 @@ struct mmc_bus_ops {
 	int (*pre_suspend)(struct mmc_host *);
 	int (*suspend)(struct mmc_host *);
 	int (*resume)(struct mmc_host *);
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+	int (*resume_pending)(struct mmc_host *);
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 	int (*runtime_suspend)(struct mmc_host *);
 	int (*runtime_resume)(struct mmc_host *);
 	int (*runtime_idle)(struct mmc_host *);

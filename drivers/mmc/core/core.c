@@ -1471,6 +1471,10 @@ static void mmc_post_req(struct mmc_host *host, struct mmc_request *mrq,
 	}
 }
 
+#ifdef CONFIG_MMC_SD_ECO_MODE_CUST_SH
+int sh_mmc_sd_set_eco_mode(struct mmc_host *host);
+#endif /* CONFIG_MMC_SD_ECO_MODE_CUST_SH */
+
 /**
  *	mmc_cmdq_discard_card_queue - discard the task[s] in the device
  *	@host: host instance
@@ -1645,6 +1649,12 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 		    (host->areq->mrq->cmd->resp[0] & R1_EXCEPTION_EVENT))
 			mmc_check_bkops(host->card);
 	}
+
+#ifdef CONFIG_MMC_SD_ECO_MODE_CUST_SH
+	if (sh_mmc_sd_set_eco_mode(host))
+		pr_info("%s: %s switch eco / normal mode.\n",
+			mmc_hostname(host), __func__);
+#endif /* CONFIG_MMC_SD_ECO_MODE_CUST_SH */
 
 	if (!err && areq) {
 		trace_mmc_blk_rw_start(areq->mrq->cmd->opcode,
@@ -1888,8 +1898,16 @@ void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card)
 	 * Scale up the multiplier (and therefore the timeout) by
 	 * the r2w factor for writes.
 	 */
+#ifdef CONFIG_TIMEOUTCTRL_EMMC_CUST_SH
+	if (mmc_card_mmc(card) && (card->csd.tacc_ns != 0))
+		mult = (unsigned int)(0x59682F00/card->csd.tacc_ns);
+	else
+		if (data->flags & MMC_DATA_WRITE)
+			mult <<= card->csd.r2w_factor;
+#else /* CONFIG_TIMEOUTCTRL_EMMC_CUST_SH */
 	if (data->flags & MMC_DATA_WRITE)
 		mult <<= card->csd.r2w_factor;
+#endif /* CONFIG_TIMEOUTCTRL_EMMC_CUST_SH */
 
 	data->timeout_ns = card->csd.tacc_ns * mult;
 	data->timeout_clks = card->csd.tacc_clks * mult;
@@ -4113,6 +4131,9 @@ int mmc_flush_cache(struct mmc_card *card)
 		if (err == -ETIMEDOUT) {
 			pr_err("%s: cache flush timeout\n",
 					mmc_hostname(card->host));
+#ifdef CONFIG_ERR_RETRY_MMC_CUST_SH
+			BUG_ON(1);
+#endif /* CONFIG_ERR_RETRY_MMC_CUST_SH */
 			err = mmc_interrupt_hpi(card);
 			if (err) {
 				pr_err("%s: mmc_interrupt_hpi() failed (%d)\n",
@@ -4181,7 +4202,14 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 			break;
 		}
 		spin_unlock_irqrestore(&host->lock, flags);
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+		if (strncmp(mmc_hostname(host), HOST_MMC_SD, sizeof(HOST_MMC_SD)) == 0)
+			_mmc_detect_change(host, msecs_to_jiffies(4000), false);
+		else
+			_mmc_detect_change(host, 0, false);
+#else /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 		_mmc_detect_change(host, 0, false);
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 
 	}
 

@@ -73,6 +73,10 @@ static const unsigned int sd_au_size[] = {
 		__res & __mask;						\
 	})
 
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+bool sh_mmc_pending_resume = false;
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
+
 /*
  * Given the decoded CSD structure, decode the raw CID to our CID structure.
  */
@@ -966,6 +970,9 @@ int mmc_sd_setup_card(struct mmc_host *host, struct mmc_card *card,
 	return 0;
 }
 
+#ifdef CONFIG_MMC_SD_ECO_MODE_CUST_SH
+extern int sh_mmc_sd_eco_mode_current;
+#endif /* CONFIG_MMC_SD_ECO_MODE_CUST_SH */
 unsigned mmc_sd_get_max_clock(struct mmc_card *card)
 {
 	unsigned max_dtr = (unsigned int)-1;
@@ -974,6 +981,15 @@ unsigned mmc_sd_get_max_clock(struct mmc_card *card)
 		if (max_dtr > card->sw_caps.uhs_max_dtr)
 			max_dtr = card->sw_caps.uhs_max_dtr;
 	} else if (mmc_card_hs(card)) {
+#ifdef CONFIG_MMC_SD_ECO_MODE_CUST_SH
+		pr_info("%s: mmc_sd_get_max_clock: mode: %s\n",
+			mmc_hostname(card->host),
+			(sh_mmc_sd_eco_mode_current ? "eco" : "normal"));
+		if (sh_mmc_sd_eco_mode_current)
+			card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR_ECO;
+		else
+			card->sw_caps.hs_max_dtr = HIGH_SPEED_MAX_DTR;
+#endif /* CONFIG_MMC_SD_ECO_MODE_CUST_SH */
 		if (max_dtr > card->sw_caps.hs_max_dtr)
 			max_dtr = card->sw_caps.hs_max_dtr;
 	} else if (max_dtr > card->csd.max_dtr) {
@@ -1230,7 +1246,16 @@ static int mmc_sd_suspend(struct mmc_host *host)
 	int err;
 
 	MMC_TRACE(host, "%s: Enter\n", __func__);
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+	if(sh_mmc_pending_resume) {
+		sh_mmc_pending_resume = false;
+		err = 0;
+	} else {
+		err = _mmc_sd_suspend(host);
+	}
+#else /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 	err = _mmc_sd_suspend(host);
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 	if (!err) {
 		pm_runtime_disable(&host->card->dev);
 		pm_runtime_set_suspended(&host->card->dev);
@@ -1288,6 +1313,10 @@ static int _mmc_sd_resume(struct mmc_host *host)
 	}
 	mmc_card_clr_suspended(host->card);
 
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+	sh_mmc_pending_resume = false;
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
+
 	err = mmc_resume_clk_scaling(host);
 	if (err) {
 		pr_err("%s: %s: fail to resume clock scaling (%d)\n",
@@ -1309,7 +1338,11 @@ static int mmc_sd_resume(struct mmc_host *host)
 
 	MMC_TRACE(host, "%s: Enter\n", __func__);
 	if (!(host->caps & MMC_CAP_RUNTIME_RESUME)) {
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+		sh_mmc_pending_resume = true;
+#else /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 		err = _mmc_sd_resume(host);
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 		pm_runtime_set_active(&host->card->dev);
 		pm_runtime_mark_last_busy(&host->card->dev);
 	}
@@ -1391,6 +1424,9 @@ static const struct mmc_bus_ops mmc_sd_ops = {
 	.runtime_resume = mmc_sd_runtime_resume,
 	.suspend = mmc_sd_suspend,
 	.resume = mmc_sd_resume,
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+	.resume_pending = _mmc_sd_resume,
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 	.power_restore = mmc_sd_power_restore,
 	.alive = mmc_sd_alive,
 	.change_bus_speed = mmc_sd_change_bus_speed,

@@ -37,6 +37,13 @@
 #include <linux/msm-bus-board.h>
 #include <linux/i2c/i2c-msm-v2.h>
 
+#if defined( CONFIG_I2C_CUST_SH )
+#define	XFER_RETRY	2
+#define SH_I2C_WAIT 30
+static int i2c_msm_frmwrk_sub_xfer(struct i2c_adapter *adap,
+							struct i2c_msg msgs[], int num, int cnt);
+#endif /* #if defined( CONFIG_I2C_CUST_SH ) */
+
 #ifdef DEBUG
 static const enum msm_i2_debug_level DEFAULT_DBG_LVL = MSM_DBG;
 #else
@@ -2309,10 +2316,31 @@ static void i2c_msm_xfer_scan(struct i2c_msm_ctrl *ctrl)
 
 static int
 i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
+#if defined( CONFIG_I2C_CUST_SH )
+{
+	int	ret;
+	int	cnt;
+	int	retry_cnt = XFER_RETRY;
+
+	for (cnt=0; cnt<=retry_cnt; cnt++) {
+		ret = i2c_msm_frmwrk_sub_xfer(adap, msgs, num, cnt);
+		dev_info(ctrl->dev, "i2c_msm_frmwrk_sub_xfer call ret=%d\n", ret);
+		if (ret >= 0) {
+			return ret;
+		}
+	}
+	return ret;
+}
+static int
+i2c_msm_frmwrk_sub_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num, int cnt)
+#endif /* #if defined( CONFIG_I2C_CUST_SH ) */
 {
 	int ret = 0;
 	struct i2c_msm_ctrl      *ctrl = i2c_get_adapdata(adap);
 	struct i2c_msm_xfer      *xfer = &ctrl->xfer;
+#if defined( CONFIG_I2C_CUST_SH )
+	char slave_adr;
+#endif /* #if defined( CONFIG_I2C_CUST_SH ) */
 
 	if (IS_ERR_OR_NULL(msgs)) {
 		dev_err(ctrl->dev, " error on msgs Accessing invalid  pointer location\n");
@@ -2388,6 +2416,18 @@ i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		i2c_msm_prof_evnt_dump(ctrl);
 
 	i2c_msm_pm_xfer_end(ctrl);
+
+#if defined( CONFIG_I2C_CUST_SH )
+	slave_adr = msgs->addr;
+	if( ret < 0){
+		dev_err(ctrl->dev, "Retry [%d] [Addr=0x%x]\n", (cnt+1), (char)slave_adr);
+		udelay( SH_I2C_WAIT );
+	}else{
+		if (cnt != 0) {
+			dev_err(ctrl->dev, "Retry Complete [Addr=0x%x]\n", (char)slave_adr);
+		}
+	}
+#endif /* #if defined( CONFIG_I2C_CUST_SH ) */
 	return ret;
 }
 

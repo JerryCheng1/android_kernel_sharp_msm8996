@@ -27,6 +27,19 @@
 #include <linux/qpnp/qpnp-haptic.h>
 #include "../../staging/android/timed_output.h"
 
+#ifdef CONFIG_QPNP_SCHAPTIC
+#include <linux/pm_qos.h>
+#include <sharp/sh_boot_manager.h>
+#include <sharp/sh_smem.h>
+#ifdef CONFIG_SHTERM
+#include <sharp/shterm_k.h>
+#endif /*  CONFIG_SHTERM */
+#endif /*  CONFIG_QPNP_SCHAPTIC */
+
+#ifdef CONFIG_SHUB_ML630Q790
+#include <sharp/shub_driver.h>
+#endif
+
 #define QPNP_IRQ_FLAGS	(IRQF_TRIGGER_RISING | \
 			IRQF_TRIGGER_FALLING | \
 			IRQF_ONESHOT)
@@ -393,9 +406,47 @@ struct qpnp_hap {
 	bool correct_lra_drive_freq;
 	bool misc_trim_error_rc19p2_clk_reg_present;
 	bool perform_lra_auto_resonance_search;
+	
+#ifdef CONFIG_QPNP_SCHAPTIC
+	u8 auto_res_reg;
+	u8 vmax_reg;
+	u8 rate_cfg1_reg;
+	u8 rate_cfg2_reg;
+#endif /* CONFIG_QPNP_SCHAPTIC */
 };
 
 static struct qpnp_hap *ghap;
+
+#ifdef CONFIG_QPNP_SCHAPTIC
+#define QPNP_HAP_LRA_AUTO_RES_PARAM  0x24
+#define QPNP_HAP_VMAX_MIN_REG        ((QPNP_HAP_VMAX_MIN_MV / QPNP_HAP_VMAX_MIN_MV) << QPNP_HAP_VMAX_SHIFT)
+#define QPNP_HAP_VMAX_MAX_REG        ((QPNP_HAP_VMAX_MAX_MV / QPNP_HAP_VMAX_MIN_MV) << QPNP_HAP_VMAX_SHIFT)
+static bool qpnp_hap_set_smem_param = false;
+static unsigned long bootmode = SH_BOOT_NORMAL;
+
+#define QPNP_HAP_PM_QOS_LATENCY_VALUE   350
+static struct pm_qos_request qpnp_hap_qos_cpu_dma_latency;
+static void qpnp_hap_pm_qos_init(void)
+{
+	qpnp_hap_qos_cpu_dma_latency.type = PM_QOS_REQ_ALL_CORES;
+	pm_qos_add_request(&qpnp_hap_qos_cpu_dma_latency, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
+}
+
+static void qpnp_hap_qos_exit(void)
+{
+	pm_qos_remove_request(&qpnp_hap_qos_cpu_dma_latency);
+}
+
+static void qpnp_hap_pm_qos_start(void)
+{
+	pm_qos_update_request(&qpnp_hap_qos_cpu_dma_latency, QPNP_HAP_PM_QOS_LATENCY_VALUE );
+}
+
+static void qpnp_hap_pm_qos_end(void)
+{
+	pm_qos_update_request(&qpnp_hap_qos_cpu_dma_latency, PM_QOS_DEFAULT_VALUE );
+}
+#endif /* CONFIG_QPNP_SCHAPTIC */
 
 /* helper to read a pmic register */
 static int qpnp_hap_read_reg(struct qpnp_hap *hap, u8 *data, u16 addr)
@@ -521,8 +572,22 @@ static int qpnp_hap_mod_enable(struct qpnp_hap *hap, int on)
 
 	rc = qpnp_hap_write_reg(hap, &val,
 			QPNP_HAP_EN_CTL_REG(hap->base));
+#ifdef CONFIG_QPNP_SCHAPTIC
+	if (rc < 0) {
+		return rc;
+	} else {
+#ifdef CONFIG_SHTERM
+		if(on) {
+			shterm_k_set_info(SHTERM_INFO_VIB, 1);
+		} else {
+			shterm_k_set_info(SHTERM_INFO_VIB, 0);
+		}
+#endif/*CONFIG_SHTERM*/
+	}
+#else/*CONFIG_QPNP_SCHAPTIC */
 	if (rc < 0)
 		return rc;
+#endif/*CONFIG_QPNP_SCHAPTIC */
 
 	hap->reg_en_ctl = val;
 
@@ -796,6 +861,9 @@ static int qpnp_hap_vmax_config(struct qpnp_hap *hap)
 	reg &= QPNP_HAP_VMAX_MASK;
 	temp = hap->vmax_mv / QPNP_HAP_VMAX_MIN_MV;
 	reg |= (temp << QPNP_HAP_VMAX_SHIFT);
+#ifdef CONFIG_QPNP_SCHAPTIC
+	hap->vmax_reg = reg;
+#endif /* CONFIG_QPNP_SCHAPTIC */
 	rc = qpnp_hap_write_reg(hap, &reg, QPNP_HAP_VMAX_REG(hap->base));
 	if (rc)
 		return rc;
@@ -1583,6 +1651,87 @@ static enum hrtimer_restart detect_auto_res_error(struct hrtimer *timer)
 	return HRTIMER_RESTART;
 }
 
+#ifdef CONFIG_QPNP_SCHAPTIC
+static int qpnp_hap_smem_config(struct qpnp_hap *hap)
+{
+	int rc = 0;
+	int i;
+	sharp_smem_common_type *p_sh_smem_common_type = NULL;
+	u8 param[4];
+
+	p_sh_smem_common_type = sh_smem_get_common_address();
+	if (!p_sh_smem_common_type) {
+		dev_err(&hap->spmi->dev, "[qpnp_hap]p_sh_smem_common_type is null\n");
+		return 1;
+	}
+	for (i=0; i<4; i++) {
+		param[i] = (u8)p_sh_smem_common_type->shdiag_vib_param[i];
+		dev_dbg(&hap->spmi->dev, "[qpnp_hap]smem param[%d]:0x%02X, ", i, param[i]);
+	}
+	dev_dbg(&hap->spmi->dev, "\n");
+	
+	if (!param[0] && !param[1] && !param[2] && !param[3]) {
+		dev_dbg(&hap->spmi->dev, "[qpnp_hap]org_param write, qpnp_hap_set_smem_param:%d\n", qpnp_hap_set_smem_param);
+		if (qpnp_hap_set_smem_param) {
+			rc = qpnp_hap_write_reg(hap, &(hap->auto_res_reg), QPNP_HAP_LRA_AUTO_RES_REG(hap->base));
+			if (rc) {
+				dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_LRA_AUTO_RES_REG org_param write err rc:%d\n", rc);
+				return rc;
+			}
+			rc = qpnp_hap_write_reg(hap, &(hap->vmax_reg), QPNP_HAP_VMAX_REG(hap->base));
+			if (rc){
+				dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_VMAX_REG org_param write err rc:%d\n", rc);
+				return rc;
+			}
+			rc = qpnp_hap_write_reg(hap, &(hap->rate_cfg1_reg), QPNP_HAP_RATE_CFG1_REG(hap->base));
+			if (rc){
+				dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_RATE_CFG1_REG org_param write err rc:%d\n", rc);
+				return rc;
+			}
+			rc = qpnp_hap_write_reg(hap, &(hap->rate_cfg2_reg), QPNP_HAP_RATE_CFG2_REG(hap->base));
+			if (rc){
+				dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_RATE_CFG2_REG org_param write err rc:%d\n", rc);
+				return rc;
+			}
+			qpnp_hap_set_smem_param = false;
+		} 
+	} else {
+		dev_dbg(&hap->spmi->dev, "[qpnp_hap]smem_param write\n");
+		qpnp_hap_set_smem_param = true;
+
+		if ((param[0] == 0) || (param[0] == QPNP_HAP_LRA_AUTO_RES_PARAM)) {
+			rc = qpnp_hap_write_reg(hap, &param[0], QPNP_HAP_LRA_AUTO_RES_REG(hap->base));
+			if (rc) {
+				dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_LRA_AUTO_RES_REG smem_param write err rc:%d\n", rc);
+				return rc;
+			}
+		} else {
+			dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_LRA_AUTO_RES_REG smem_param write param err param:0x%02x\n", rc);
+		}
+		if ((param[1] >= QPNP_HAP_VMAX_MIN_REG) && (param[1] <= QPNP_HAP_VMAX_MAX_REG)) {
+			rc = qpnp_hap_write_reg(hap, &param[1], QPNP_HAP_VMAX_REG(hap->base));
+			if (rc) {
+				dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_VMAX_REG smem_param write err rc:%d\n", rc);
+				return rc;
+			}
+		} else {
+			dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_VMAX_REG smem_param write param err param:0x%02x\n", rc);
+		}
+		rc = qpnp_hap_write_reg(hap, &param[2], QPNP_HAP_RATE_CFG1_REG(hap->base));
+		if (rc) {
+			dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_RATE_CFG1_REG smem_param write err rc:%d\n", rc);
+			return rc;
+		}
+		rc = qpnp_hap_write_reg(hap, &param[3], QPNP_HAP_RATE_CFG2_REG(hap->base));
+		if (rc) {
+			dev_err(&hap->spmi->dev, "[qpnp_hap]QPNP_HAP_RATE_CFG2_REG smem_param write err rc:%d\n", rc);
+			return rc;
+		}
+	}
+	return rc;
+}
+#endif /* CONFIG_QPNP_SCHAPTIC */
+
 /* set api for haptics */
 static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 {
@@ -1592,13 +1741,36 @@ static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 	u32 back_emf_delay_us = hap->time_required_to_generate_back_emf_us;
 
 	if (hap->play_mode == QPNP_HAP_PWM) {
+#ifdef CONFIG_SHUB_ML630Q790
+		if (on) {
+			shub_api_stop_pedometer_func(SHUB_STOP_PED_TYPE_VIB);
+			qpnp_hap_pm_qos_start();
+			rc = pwm_enable(hap->pwm_info.pwm_dev);
+		} else {
+			shub_api_restart_pedometer_func(SHUB_STOP_PED_TYPE_VIB);
+			qpnp_hap_pm_qos_end();
+			pwm_disable(hap->pwm_info.pwm_dev);
+		}
+#else
 		if (on)
 			rc = pwm_enable(hap->pwm_info.pwm_dev);
 		else
 			pwm_disable(hap->pwm_info.pwm_dev);
+#endif // CONFIG_SHUB_ML630Q790
 	} else if (hap->play_mode == QPNP_HAP_BUFFER ||
 			hap->play_mode == QPNP_HAP_DIRECT) {
 		if (on) {
+#ifdef CONFIG_SHUB_ML630Q790
+			shub_api_stop_pedometer_func(SHUB_STOP_PED_TYPE_VIB);
+#endif
+#ifdef CONFIG_QPNP_SCHAPTIC
+			if ((bootmode == SH_BOOT_D) || (bootmode == SH_BOOT_F_F)) {
+				rc = qpnp_hap_smem_config(hap);
+				if (rc)
+					return rc;
+			}
+#endif /* CONFIG_QPNP_SCHAPTIC */
+
 			/*
 			 * For auto resonance detection to work properly,
 			 * sufficient back-emf has to be generated. In general,
@@ -1627,6 +1799,9 @@ static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 			if (rc < 0)
 				return rc;
 
+#ifdef CONFIG_QPNP_SCHAPTIC
+			qpnp_hap_pm_qos_start();
+#endif /* CONFIG_QPNP_SCHAPTIC */
 			rc = qpnp_hap_play(hap, on);
 
 			if ((hap->act_type == QPNP_HAP_LRA) &&
@@ -1652,7 +1827,13 @@ static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 				mutex_unlock(&hap->lock);
 			}
 		} else {
+#ifdef CONFIG_SHUB_ML630Q790
+			shub_api_restart_pedometer_func(SHUB_STOP_PED_TYPE_VIB);
+#endif
 			rc = qpnp_hap_play(hap, on);
+#ifdef CONFIG_QPNP_SCHAPTIC
+			qpnp_hap_pm_qos_end();
+#endif /* CONFIG_QPNP_SCHAPTIC */
 			if (rc < 0)
 				return rc;
 
@@ -1946,6 +2127,9 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 			reg |= (temp - 2);
 			mask |= QPNP_HAP_LRA_RES_CAL_PER_MASK;
 		}
+#ifdef CONFIG_QPNP_SCHAPTIC
+		hap->auto_res_reg = reg;
+#endif /* CONFIG_QPNP_SCHAPTIC */
 		rc = qpnp_hap_masked_write_reg(hap, reg,
 					QPNP_HAP_LRA_AUTO_RES_REG(hap->base),
 					mask);
@@ -1954,7 +2138,9 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 	} else {
 		/* disable auto resonance for ERM */
 		reg = 0x00;
-
+#ifdef CONFIG_QPNP_SCHAPTIC
+		hap->auto_res_reg = reg;
+#endif /* CONFIG_QPNP_SCHAPTIC */
 		rc = qpnp_hap_write_reg(hap, &reg,
 					QPNP_HAP_LRA_AUTO_RES_REG(hap->base));
 		if (rc)
@@ -2110,12 +2296,18 @@ static int qpnp_hap_config(struct qpnp_hap *hap)
 		 "Play rate code 0x%x\n", hap->init_drive_period_code);
 
 	reg = hap->init_drive_period_code & QPNP_HAP_RATE_CFG1_MASK;
+#ifdef CONFIG_QPNP_SCHAPTIC
+	hap->rate_cfg1_reg = reg;
+#endif /* CONFIG_QPNP_SCHAPTIC */
 	rc = qpnp_hap_write_reg(hap, &reg,
 			QPNP_HAP_RATE_CFG1_REG(hap->base));
 	if (rc)
 		return rc;
 
 	reg = (hap->init_drive_period_code & 0xF00) >> QPNP_HAP_RATE_CFG2_SHFT;
+#ifdef CONFIG_QPNP_SCHAPTIC
+	hap->rate_cfg2_reg = reg;
+#endif /* CONFIG_QPNP_SCHAPTIC */
 	rc = qpnp_hap_write_reg(hap, &reg,
 			QPNP_HAP_RATE_CFG2_REG(hap->base));
 	if (rc)
@@ -2487,6 +2679,10 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 	if (of_find_property(spmi->dev.of_node, "vcc_pon-supply", NULL))
 		hap->manage_pon_supply = true;
 
+#ifdef CONFIG_QPNP_SCHAPTIC
+	bootmode = sh_boot_get_bootmode();
+#endif
+
 	return 0;
 }
 
@@ -2574,6 +2770,10 @@ static int qpnp_haptic_probe(struct spmi_device *spmi)
 	hap->timed_dev.get_time = qpnp_hap_get_time;
 	hap->timed_dev.enable = qpnp_hap_td_enable;
 
+#ifdef CONFIG_QPNP_SCHAPTIC
+	qpnp_hap_pm_qos_init();
+#endif /* CONFIG_QPNP_SCHAPTIC */
+
 	if (hap->act_type == QPNP_HAP_LRA && hap->correct_lra_drive_freq &&
 						!hap->lra_hw_auto_resonance) {
 		hrtimer_init(&hap->auto_res_err_poll_timer, CLOCK_MONOTONIC,
@@ -2617,6 +2817,9 @@ sysfs_fail:
 				&qpnp_hap_attrs[i].attr);
 	timed_output_dev_unregister(&hap->timed_dev);
 timed_output_fail:
+#ifdef CONFIG_QPNP_SCHAPTIC
+	qpnp_hap_qos_exit();
+#endif /* CONFIG_QPNP_SCHAPTIC */
 	cancel_work_sync(&hap->work);
 	if (hap->act_type == QPNP_HAP_LRA && hap->correct_lra_drive_freq &&
 						!hap->lra_hw_auto_resonance)
@@ -2636,7 +2839,9 @@ static int qpnp_haptic_remove(struct spmi_device *spmi)
 	for (i = 0; i < ARRAY_SIZE(qpnp_hap_attrs); i++)
 		sysfs_remove_file(&hap->timed_dev.dev->kobj,
 				&qpnp_hap_attrs[i].attr);
-
+#ifdef CONFIG_QPNP_SCHAPTIC
+	qpnp_hap_qos_exit();
+#endif /* CONFIG_QPNP_SCHAPTIC */
 	cancel_work_sync(&hap->work);
 	if (hap->act_type == QPNP_HAP_LRA && hap->correct_lra_drive_freq &&
 						!hap->lra_hw_auto_resonance)

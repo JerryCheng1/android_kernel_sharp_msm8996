@@ -1166,9 +1166,23 @@ static struct rcg_clk camss_gp1_clk_src = {
 
 static struct clk_freq_tbl ftbl_mclk0_clk_src[] = {
 	F_MM(   4800000,         mmsscc_xo,   4,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   6000000,      mmsscc_gpll0,   1,    1,   100),
+	F_MM(   6810000,      mmsscc_gpll0,   1,    1,    88),
+	F_MM(   7400000,      mmsscc_gpll0,   1,    1,    81),
+#else
 	F_MM(   6000000,  mmsscc_gpll0_div,  10,    1,     5),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   8000000,  mmsscc_gpll0_div,   1,    2,    75),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   8210000,      mmsscc_gpll0,   1,    1,    73),
+	F_MM(   8690000,      mmsscc_gpll0,   1,    1,    69),
+	F_MM(   8820000,      mmsscc_gpll0,   1,    1,    68),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   9600000,         mmsscc_xo,   2,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(  12000000,  mmsscc_gpll0_div,   1,    1,    25),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(  16666667,  mmsscc_gpll0_div,   2,    1,     9),
 	F_MM(  19200000,         mmsscc_xo,   1,    0,     0),
 	F_MM(  24000000,  mmsscc_gpll0_div,   1,    2,    25),
@@ -1195,9 +1209,23 @@ static struct rcg_clk mclk0_clk_src = {
 
 static struct clk_freq_tbl ftbl_mclk1_clk_src[] = {
 	F_MM(   4800000,         mmsscc_xo,   4,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   6000000,      mmsscc_gpll0,   1,    1,   100),
+	F_MM(   6810000,      mmsscc_gpll0,   1,    1,    88),
+	F_MM(   7400000,      mmsscc_gpll0,   1,    1,    81),
+#else
 	F_MM(   6000000,  mmsscc_gpll0_div,  10,    1,     5),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   8000000,  mmsscc_gpll0_div,   1,    2,    75),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   8210000,      mmsscc_gpll0,   1,    1,    73),
+	F_MM(   8690000,      mmsscc_gpll0,   1,    1,    69),
+	F_MM(   8820000,      mmsscc_gpll0,   1,    1,    68),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   9600000,         mmsscc_xo,   2,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(  12000000,  mmsscc_gpll0_div,   1,    1,    25),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(  16666667,  mmsscc_gpll0_div,   2,    1,     9),
 	F_MM(  19200000,         mmsscc_xo,   1,    0,     0),
 	F_MM(  24000000,  mmsscc_gpll0_div,   1,    2,    25),
@@ -1224,9 +1252,23 @@ static struct rcg_clk mclk1_clk_src = {
 
 static struct clk_freq_tbl ftbl_mclk2_clk_src[] = {
 	F_MM(   4800000,         mmsscc_xo,   4,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   6000000,      mmsscc_gpll0,   1,    1,   100),
+	F_MM(   6810000,      mmsscc_gpll0,   1,    1,    88),
+	F_MM(   7400000,      mmsscc_gpll0,   1,    1,    81),
+#else
 	F_MM(   6000000,  mmsscc_gpll0_div,  10,    1,     5),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   8000000,  mmsscc_gpll0_div,   1,    2,    75),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   8210000,      mmsscc_gpll0,   1,    1,    73),
+	F_MM(   8690000,      mmsscc_gpll0,   1,    1,    69),
+	F_MM(   8820000,      mmsscc_gpll0,   1,    1,    68),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   9600000,         mmsscc_xo,   2,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(  12000000,  mmsscc_gpll0_div,   1,    1,    25),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(  16666667,  mmsscc_gpll0_div,   2,    1,     9),
 	F_MM(  19200000,         mmsscc_xo,   1,    0,     0),
 	F_MM(  24000000,  mmsscc_gpll0_div,   1,    2,    25),
@@ -1253,9 +1295,23 @@ static struct rcg_clk mclk2_clk_src = {
 
 static struct clk_freq_tbl ftbl_mclk3_clk_src[] = {
 	F_MM(   4800000,         mmsscc_xo,   4,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   6000000,      mmsscc_gpll0,   1,    1,   100),
+	F_MM(   6810000,      mmsscc_gpll0,   1,    1,    88),
+	F_MM(   7400000,      mmsscc_gpll0,   1,    1,    81),
+#else
 	F_MM(   6000000,  mmsscc_gpll0_div,  10,    1,     5),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   8000000,  mmsscc_gpll0_div,   1,    2,    75),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(   8210000,      mmsscc_gpll0,   1,    1,    73),
+	F_MM(   8690000,      mmsscc_gpll0,   1,    1,    69),
+	F_MM(   8820000,      mmsscc_gpll0,   1,    1,    68),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(   9600000,         mmsscc_xo,   2,    0,     0),
+#ifdef CONFIG_MSM_CAMERA_SENSOR /* SH_CAMERA_DRIVER-> */
+	F_MM(  12000000,  mmsscc_gpll0_div,   1,    1,    25),
+#endif /* SH_CAMERA_DRIVER<- */
 	F_MM(  16666667,  mmsscc_gpll0_div,   2,    1,     9),
 	F_MM(  19200000,         mmsscc_xo,   1,    0,     0),
 	F_MM(  24000000,  mmsscc_gpll0_div,   1,    2,    25),

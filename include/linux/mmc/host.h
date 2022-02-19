@@ -24,6 +24,9 @@
 #include <linux/mmc/ring_buffer.h>
 
 #define MMC_AUTOSUSPEND_DELAY_MS	3000
+#ifdef CONFIG_MMC_SD_PENDING_RESUME_CUST_SH
+#define SD_AUTOSUSPEND_DELAY_MS		10000
+#endif /* CONFIG_MMC_SD_PENDING_RESUME_CUST_SH */
 
 struct mmc_ios {
 	unsigned int	clock;			/* clock rate */

@@ -23,10 +23,10 @@
 
 #include "shtps_rmi.h"
 /* -------------------------------------------------------------------------- */
-#ifdef SHTPS_SEND_SHTERM_EVENT_ENABLE
+/* #ifdef SHTPS_SEND_SHTERM_EVENT_ENABLE
 	#include <sharp/shterm_k.h>
 	void shtps_send_shterm_event(int event_num);
-#endif
+#endif */
 
 /* -------------------------------------------------------------------------- */
 #if defined(SHTPS_PROXIMITY_SUPPORT_ENABLE)

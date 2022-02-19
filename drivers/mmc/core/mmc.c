@@ -134,6 +134,11 @@ static const struct mmc_fixup mmc_fixups[] = {
 	MMC_FIXUP("MMC16G", CID_MANFID_KINGSTON, CID_OEMID_ANY,
 		add_quirk_mmc, MMC_QUIRK_CACHE_DISABLE),
 
+#ifdef CONFIG_ARCH_PA32
+	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_ANY, CID_OEMID_ANY,
+		add_quirk_mmc, MMC_QUIRK_CACHE_DISABLE),
+#endif /* CONFIG_ANDROID_RECOVERY_BUILD */
+
 	END_FIXUP
 };
 
@@ -434,6 +439,11 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	 * are authorized, see JEDEC JESD84-B50 section B.8.
 	 */
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
+
+#ifdef CONFIG_MMC_BUG_FIX_CUST_SH
+	/* fixup device after ext_csd revision field is updated */
+	mmc_fixup_device(card, mmc_fixups);
+#endif /* CONFIG_MMC_BUG_FIX_CUST_SH */
 
 	card->ext_csd.raw_sectors[0] = ext_csd[EXT_CSD_SEC_CNT + 0];
 	card->ext_csd.raw_sectors[1] = ext_csd[EXT_CSD_SEC_CNT + 1];
@@ -1059,10 +1069,18 @@ static int mmc_select_hs(struct mmc_card *card)
 {
 	int err;
 
+#ifdef CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH
+	err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_HS_TIMING,
+			((CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH << 4) | EXT_CSD_TIMING_HS),
+			card->ext_csd.generic_cmd6_time,
+			true, false, true);
+#else /* CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH */
 	err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 			   EXT_CSD_HS_TIMING, EXT_CSD_TIMING_HS,
 			   card->ext_csd.generic_cmd6_time,
 			   true, false, true);
+#endif /* CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH */
 	if (!err) {
 		mmc_set_timing(card->host, MMC_TIMING_MMC_HS);
 		err = mmc_switch_status(card, false);
@@ -1181,10 +1199,18 @@ static int mmc_select_hs400(struct mmc_card *card)
 	 * Before switching to dual data rate operation for HS400,
 	 * it is required to convert from HS200 mode to HS mode.
 	 */
+#ifdef CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH
+	err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_HS_TIMING,
+			((CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH << 4) | EXT_CSD_TIMING_HS),
+			card->ext_csd.generic_cmd6_time,
+			true, false, true);
+#else /* CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH */
 	err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 			   EXT_CSD_HS_TIMING, EXT_CSD_TIMING_HS,
 			   card->ext_csd.generic_cmd6_time,
 			   true, false, true);
+#endif /* CONFIG_HS_DRIVER_TYPE_EMMC_CUST_SH */
 	if (err) {
 		pr_warn("%s: switch to high-speed from hs200 failed, err:%d\n",
 			mmc_hostname(host), err);
@@ -1215,10 +1241,19 @@ static int mmc_select_hs400(struct mmc_card *card)
 		return err;
 	}
 
+#ifdef CONFIG_HS400_DRIVER_TYPE_EMMC_CUST_SH
+	err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_HS_TIMING,
+			((CONFIG_HS400_DRIVER_TYPE_EMMC_CUST_SH << 4) |
+			EXT_CSD_TIMING_HS400),
+			card->ext_csd.generic_cmd6_time,
+			true, false, true);
+#else /* CONFIG_HS400_DRIVER_TYPE_EMMC_CUST_SH */
 	err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 			   EXT_CSD_HS_TIMING, EXT_CSD_TIMING_HS400,
 			   card->ext_csd.generic_cmd6_time,
 			   true, false, true);
+#endif /* CONFIG_HS400_DRIVER_TYPE_EMMC_CUST_SH */
 	if (err) {
 		pr_warn("%s: switch to hs400 failed, err:%d\n",
 			 mmc_hostname(host), err);
@@ -1286,10 +1321,19 @@ static int mmc_select_hs200(struct mmc_card *card)
 	 */
 	err = mmc_select_bus_width(card);
 	if (!IS_ERR_VALUE(err)) {
+#ifdef CONFIG_HS200_DRIVER_TYPE_EMMC_CUST_SH
+		err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				EXT_CSD_HS_TIMING,
+				((CONFIG_HS200_DRIVER_TYPE_EMMC_CUST_SH << 4) |
+				EXT_CSD_TIMING_HS200),
+				card->ext_csd.generic_cmd6_time,
+				true, false, true);
+#else /* CONFIG_HS200_DRIVER_TYPE_EMMC_CUST_SH */
 		err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				   EXT_CSD_HS_TIMING, EXT_CSD_TIMING_HS200,
 				   card->ext_csd.generic_cmd6_time,
 				   true, false, true);
+#endif /* CONFIG_HS200_DRIVER_TYPE_EMMC_CUST_SH */
 		if (!err) {
 			mmc_set_timing(host, MMC_TIMING_MMC_HS200);
 			/*

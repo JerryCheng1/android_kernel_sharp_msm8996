@@ -160,6 +160,10 @@
 #define QPNP_VADC_HC1_CONV_TIME_MAX_US				214
 #define QPNP_VADC_HC1_ERR_COUNT					1600
 
+#ifdef CONFIG_BATTERY_SH
+static struct qpnp_vadc_chip*	shbatt_vadc_chip = NULL;
+#endif /* CONFIG_BATTERY_SH */
+
 struct qpnp_vadc_mode_state {
 	bool				meas_int_mode;
 	bool				meas_int_request_in_queue;
@@ -2130,6 +2134,60 @@ fail_unlock:
 }
 EXPORT_SYMBOL(qpnp_vadc_conv_seq_request);
 
+#ifdef CONFIG_BATTERY_SH
+static u8 data_st = 0;
+#define SMBCHG_CHGR_CFG_CFG_VCHG_ADDR	0x10FF
+#define SMBCHG_CHGR_CFG_WRITE_EN_ADDR	0x10d0
+#define SMBCHG_CHGR_CFG_CFG_VCHG_IIN	0x0A
+#define SMBCHG_CHGR_CFG_WRITE_EN	0xA5
+int qpnp_smb_vdir_chg_pin_enable(bool enable){
+
+	int rc   = 0;
+	u16 addr = 0;
+	u8  data = 0;
+
+	addr = SMBCHG_CHGR_CFG_WRITE_EN_ADDR;
+	data = SMBCHG_CHGR_CFG_WRITE_EN;
+
+	rc = spmi_ext_register_writel(spmi_busnum_to_ctrl(0), 2, addr, &data, 1);
+
+	if (rc < 0) {
+		pr_err("SMBCHG_CHGR_CFG_WRITE_EN write error 0x%x write error = %d\n", addr, rc);
+	}
+
+	addr = SMBCHG_CHGR_CFG_CFG_VCHG_ADDR;
+	data = SMBCHG_CHGR_CFG_CFG_VCHG_IIN;
+
+	if(enable){
+
+		rc = spmi_ext_register_readl(spmi_busnum_to_ctrl(0), 2, addr, &data_st, 1);
+
+		if (rc < 0) {
+			pr_err("SMBCHG_CHGR_CFG_CFG_VCHG_IIN read error 0x%x write error = %d\n", addr, rc);
+		}
+
+		rc = spmi_ext_register_writel(spmi_busnum_to_ctrl(0), 2, addr, &data, 1);
+
+		if (rc < 0) {
+			pr_err("SMBCHG_CHGR_CFG_CFG_VCHG_IIN write error 0x%x write error = %d\n", addr, rc);
+		}
+
+	}else if(!enable){
+
+		data = data_st;
+
+		rc = spmi_ext_register_writel(spmi_busnum_to_ctrl(0), 2, addr, &data, 1);
+
+		if (rc < 0) {
+			pr_err("SMBCHG_CHGR_CFG_CFG_VCHG_IIN write error 0x%x write error = %d\n", addr, rc);
+		}
+	}
+
+	return rc;
+}
+EXPORT_SYMBOL(qpnp_smb_vdir_chg_pin_enable);
+#endif /* CONFIG_BATTERY_SH */
+
 int32_t qpnp_vadc_read(struct qpnp_vadc_chip *vadc,
 				enum qpnp_vadc_channels channel,
 				struct qpnp_vadc_result *result)
@@ -2210,6 +2268,26 @@ int32_t qpnp_vadc_read(struct qpnp_vadc_chip *vadc,
 				channel, result);
 }
 EXPORT_SYMBOL(qpnp_vadc_read);
+
+#ifdef CONFIG_BATTERY_SH
+int32_t shbatt_vadc_channel_read(
+	enum qpnp_vadc_channels		channel,
+	struct qpnp_vadc_result*	result)
+{
+	int32_t	 ret = 0;
+
+	if( shbatt_vadc_chip == NULL )
+	{
+		pr_err( "%s()[E]Error. vadc channell is not initialized.\n", __FUNCTION__ );
+		return -EAGAIN;
+	}
+
+	ret = qpnp_vadc_read( shbatt_vadc_chip, channel, result );
+
+	return ret;
+}
+EXPORT_SYMBOL(shbatt_vadc_channel_read);
+#endif /* CONFIG_BATTERY_SH */
 
 static void qpnp_vadc_lock(struct qpnp_vadc_chip *vadc)
 {
@@ -2815,6 +2893,9 @@ static int qpnp_vadc_probe(struct spmi_device *spmi)
 	vadc->vadc_iadc_sync_lock = false;
 	dev_set_drvdata(&spmi->dev, vadc);
 	list_add(&vadc->list, &qpnp_vadc_device_list);
+#ifdef CONFIG_BATTERY_SH
+	shbatt_vadc_chip = vadc;
+#endif /* CONFIG_BATTERY_SH */
 
 	return 0;
 
@@ -2838,6 +2919,10 @@ static int qpnp_vadc_remove(struct spmi_device *spmi)
 	struct device_node *node = spmi->dev.of_node;
 	struct device_node *child;
 	int i = 0;
+
+#ifdef CONFIG_BATTERY_SH
+	shbatt_vadc_chip = NULL;
+#endif /* CONFIG_BATTERY_SH */
 
 	for_each_child_of_node(node, child) {
 		device_remove_file(&spmi->dev,

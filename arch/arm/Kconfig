@@ -2300,3 +2300,7 @@ endif
 source "lib/Kconfig"
 
 source "arch/arm/kvm/Kconfig"
+
+config SHSYS_CUST
+       bool "SHARP SYSTEM CUSTOMIZE"
+       default n
