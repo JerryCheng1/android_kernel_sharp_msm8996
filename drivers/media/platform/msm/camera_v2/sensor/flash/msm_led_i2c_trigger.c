@@ -408,23 +408,10 @@ static int32_t msm_led_get_dt_data(struct device_node *of_node,
 		return -EINVAL;
 	}
 
-	fctrl->flashdata = kzalloc(sizeof(
-		struct msm_camera_sensor_board_info),
-		GFP_KERNEL);
-	if (!fctrl->flashdata) {
-		pr_err("%s failed %d\n", __func__, __LINE__);
-		return -ENOMEM;
-	}
-
-	flashdata = fctrl->flashdata;
-	power_info = &flashdata->power_info;
-
-	rc = of_property_read_u32(of_node, "cell-index", &fctrl->subdev_id);
 	if (rc < 0) {
 		pr_err("failed\n");
 		return -EINVAL;
 	}
-
 	CDBG("subdev id %d\n", fctrl->subdev_id);
 
 	rc = of_property_read_string(of_node, "label",
@@ -446,7 +433,6 @@ static int32_t msm_led_get_dt_data(struct device_node *of_node,
 		rc = 0;
 	}
 
-	fctrl->pinctrl_info.use_pinctrl = false;
 	fctrl->pinctrl_info.use_pinctrl = of_property_read_bool(of_node,
 						"qcom,enable_pinctrl");
 	if (of_get_property(of_node, "qcom,flash-source", &count)) {
@@ -494,15 +480,12 @@ static int32_t msm_led_get_dt_data(struct device_node *of_node,
 				fctrl->flash_trigger_name[i],
 				&fctrl->flash_trigger[i]);
 		}
-
 	} else { /*Handle LED Flash Ctrl by GPIO*/
 		power_info->gpio_conf =
 			 kzalloc(sizeof(struct msm_camera_gpio_conf),
 				 GFP_KERNEL);
-		if (!power_info->gpio_conf) {
-			rc = -ENOMEM;
-			return rc;
-		}
+		if (!power_info->gpio_conf)
+			return -ENOMEM;
 		gconf = power_info->gpio_conf;
 
 		gpio_array_size = of_gpio_count(of_node);
@@ -510,8 +493,8 @@ static int32_t msm_led_get_dt_data(struct device_node *of_node,
 
 		if (gpio_array_size) {
 			gpio_array =
-				kzalloc((sizeof(uint16_t) * gpio_array_size),
-					GFP_KERNEL);
+				kcalloc(gpio_array_size, sizeof(uint16_t),
+					 GFP_KERNEL);
 			if (!gpio_array) {
 				rc = -ENOMEM;
 				goto ERROR4;

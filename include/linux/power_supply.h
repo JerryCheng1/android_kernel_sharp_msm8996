@@ -263,6 +263,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_COLD_TEMP,
 	POWER_SUPPLY_PROP_HOT_TEMP,
 #endif /* CONFIG_BATTERY_SH */
+	POWER_SUPPLY_PROP_REAL_TYPE,
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 	/* Properties of type `const char *' */

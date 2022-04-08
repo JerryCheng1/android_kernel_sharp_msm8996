@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2342,6 +2342,12 @@ i2c_msm_frmwrk_sub_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num
 #if defined( CONFIG_I2C_CUST_SH )
 	char slave_adr;
 #endif /* #if defined( CONFIG_I2C_CUST_SH ) */
+
+	if (num < 1) {
+		dev_err(ctrl->dev,
+		"error on number of msgs(%d) received\n", num);
+		return -EINVAL;
+	}
 
 	if (IS_ERR_OR_NULL(msgs)) {
 		dev_err(ctrl->dev, " error on msgs Accessing invalid  pointer location\n");
