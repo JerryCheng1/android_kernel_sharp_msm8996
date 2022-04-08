@@ -1122,9 +1122,10 @@ static void mdss_dsi_8996_phy_config(struct mdss_dsi_ctrl_pdata *ctrl)
 	int j, off, ln, cnt, ln_off;
 	char *ip;
 	void __iomem *base;
+#ifndef CONFIG_SHDISP /* CUST_ID_00068 */
 	u32 data;
 	struct mdss_panel_info *pinfo;
-
+#endif
 	pd = &(((ctrl->panel_data).panel_info.mipi).dsi_phy_db);
 
 	MIPI_OUTP((ctrl->phy_io.base) + DSIPHY_CMN_LDO_CNTRL, 0x1c);
